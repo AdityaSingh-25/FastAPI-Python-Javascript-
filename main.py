@@ -53,12 +53,29 @@ def get_all_products(
 ):
     logger.info("Fetching products with filters")
 
-    return db.query(database_models.Product)\
-        .filter(database_models.Product.price >= min_price)\
-        .filter(database_models.Product.price <= max_price)\
-        .offset(skip)\
-        .limit(limit)\
-        .all()
+
+    return (
+        db.query(database_models.Product)  
+        # Start a database query on the Product table
+
+        .filter(database_models.Product.price >= min_price)  
+        # Apply filter: include only products with price >= min_price
+
+        .filter(database_models.Product.price <= max_price)  
+        # Apply filter: include only products with price <= max_price
+
+        .order_by(database_models.Product.id.asc())  
+        # Sort results in ascending order of product ID (1 → 2 → 3 ...)
+
+        .offset(skip)  
+        # Skip the first 'skip' number of records (used for pagination)
+
+        .limit(limit)  
+        # Limit the number of records returned (pagination size)
+
+        .all()  
+        # Execute the query and return all matching results as a list
+)
 
 
 # 🔥 GET PRODUCT BY ID (IMPROVED ERROR HANDLING)
