@@ -1,14 +1,12 @@
+
+
 import React, { useEffect, useState } from "react";
 import "./App.css";
 
-// Base URL for backend API
 const BASE_URL = "http://127.0.0.1:8000";
 
 function App() {
-  // Stores list of all products from backend
   const [products, setProducts] = useState([]);
-
-  // Stores form input values (used for both add and edit)
   const [form, setForm] = useState({
     id: "",
     name: "",
@@ -17,190 +15,369 @@ function App() {
     quantity: ""
   });
 
-  // Stores ID entered in search box
-  const [searchId, setSearchId] = useState("");
-
-  // Tracks whether user is editing or adding
+  const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [toast, setToast] = useState("");
 
-  // Runs once when component loads → fetch all products
   useEffect(() => {
     fetchProducts();
   }, []);
 
-  // Fetch all products from backend
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2000);
+  };
+
   const fetchProducts = async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/products`);
-      const data = await res.json();
-      setProducts(data); // store products in state
-    } catch (err) {
-      console.error("Error fetching products:", err);
-    }
-  };
-
-  // Handles input changes and updates form state dynamically
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  // Adds a new product (POST request)
-  const addProduct = async () => {
-    try {
-      await fetch(`${BASE_URL}/products`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          ...form,
-          id: Number(form.id),           // convert to number
-          price: Number(form.price),
-          quantity: Number(form.quantity)
-        })
-      });
-
-      fetchProducts();   // refresh list after adding
-
-      setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // ✅ clear form
-    } catch (err) {
-      console.error("Error adding product:", err);
-    }
-  };
-
-  // Updates an existing product (PUT request)
-  const updateProduct = async () => {
-    try {
-      await fetch(`${BASE_URL}/products/${form.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          ...form,
-          id: Number(form.id),
-          price: Number(form.price),
-          quantity: Number(form.quantity)
-        })
-      });
-
-      setIsEditing(false); // exit edit mode
-      setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // clear form
-      fetchProducts(); // refresh updated data
-    } catch (err) {
-      console.error("Error updating product:", err);
-    }
-  };
-
-  // Loads selected product into form for editing
-  const editProduct = (product) => {
-    setForm(product);      // fill form with existing data
-    setIsEditing(true);    // switch to edit mode
-  };
-
-  // Deletes a product (DELETE request)
-  const deleteProduct = async (id) => {
-    try {
-      await fetch(`${BASE_URL}/products/${id}`, {
-        method: "DELETE"
-      });
-      fetchProducts(); // refresh list after deletion
-    } catch (err) {
-      console.error("Error deleting product:", err);
-    }
-  };
-
-  // Searches product by ID
-  const searchProduct = async () => {
-  try {
-    const res = await fetch(`${BASE_URL}/products/${searchId}`);
-
-    if (!res.ok) {          // show only searched product
-      alert("Product not found");
-      return;
-    }
-
+    setLoading(true);
+    const res = await fetch(`${BASE_URL}/products`);
     const data = await res.json();
-    setProducts([data]);
+    setProducts(data);
+    setLoading(false);
+  };
 
-  } catch (err) {
-    console.error("Error searching product:", err);
-  }
-};
+  const addProduct = async () => {
+    await fetch(`${BASE_URL}/products`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        id: Number(form.id),
+        price: Number(form.price),
+        quantity: Number(form.quantity)
+      })
+    });
 
+    showToast("Product Added ✅");
+    fetchProducts();
+  };
+
+  const updateProduct = async () => {
+    await fetch(`${BASE_URL}/products/${form.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form)
+    });
+
+    setShowModal(false);
+    showToast("Product Updated ✏️");
+    fetchProducts();
+  };
+
+  const deleteProduct = async (id) => {
+    await fetch(`${BASE_URL}/products/${id}`, {
+      method: "DELETE"
+    });
+
+    showToast("Product Deleted ❌");
+    fetchProducts();
+  };
+
+  const openEditModal = (product) => {
+    setForm(product);
+    setShowModal(true);
+  };
 
   return (
     <div className="container">
-      <h1>🚀 Project X Dashboard</h1>
+      <h1>🚀 Product Dashboard</h1>
 
-      {/* FORM SECTION */}
+      {/* Toast */}
+      {toast && <div className="toast">{toast}</div>}
+
+      {/* Add Form */}
       <div className="form">
-        {/* Controlled inputs → value tied to state */}
-        <input name="id" value={form.id} placeholder="ID" onChange={handleChange} />
-        <input name="name" value={form.name} placeholder="Name" onChange={handleChange} />
-        <input name="description" value={form.description} placeholder="Description" onChange={handleChange} />
-        <input name="price" value={form.price} placeholder="Price" onChange={handleChange} />
-        <input name="quantity" value={form.quantity} placeholder="Quantity" onChange={handleChange} />
+        <input placeholder="ID" onChange={(e) => setForm({ ...form, id: e.target.value })} />
+        <input placeholder="Name" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <input placeholder="Description" onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <input placeholder="Price" onChange={(e) => setForm({ ...form, price: e.target.value })} />
+        <input placeholder="Quantity" onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
 
-        {/* Button switches between Add and Update */}
-        <button onClick={isEditing ? updateProduct : addProduct}>
-          {isEditing ? "Update Product" : "Add Product"}
-        </button>
-
-        {/* Cancel button appears only in edit mode */}
-        {isEditing && (
-          <button
-            onClick={() => {
-              setIsEditing(false); // exit edit mode
-              setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // reset form
-            }}
-          >
-            Cancel
-          </button>
-        )}
+        <button onClick={addProduct}>Add Product</button>
       </div>
 
-      {/* SEARCH SECTION */}
-      <div className="search">
-        <input
-          placeholder="Search by ID"
-          value={searchId}
-          onChange={(e) => setSearchId(e.target.value)}
-        />
-        <button onClick={searchProduct}>Search</button>
-        <button onClick={fetchProducts}>Reset</button>
-      </div>
+      {/* Loader */}
+      {loading ? (
+        <div className="loader"></div>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
 
-      {/* PRODUCT LIST */}
-      <div className="products">
-        {products.map((p) => (
-          <div key={p.id} className="card">
-            <h3>{p.name}</h3>
-            <p><strong>ID:</strong> {p.id}</p>
-            <p>{p.description}</p>
-            <p><strong>Price:</strong> ₹{p.price}</p>
-            <p><strong>Stock:</strong> {p.quantity}</p>
+          <tbody>
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td>{p.id}</td>
+                <td>{p.name}</td>
+                <td>{p.description}</td>
+                <td>₹{p.price}</td>
+                <td>{p.quantity}</td>
+                <td>
+                  <button onClick={() => openEditModal(p)}>Edit</button>
+                  <button onClick={() => deleteProduct(p.id)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
-            {/* Edit fills form */}
-            <button onClick={() => editProduct(p)}>Edit</button>
+      {/* Edit Modal */}
+      {showModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Edit Product</h2>
 
-            {/* Delete removes product */}
-            <button onClick={() => deleteProduct(p.id)}>Delete</button>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+            <input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+
+            <button onClick={updateProduct}>Update</button>
+            <button onClick={() => setShowModal(false)}>Cancel</button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default App;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import React, { useEffect, useState } from "react";
+// import "./App.css";
+
+// // Base URL for backend API
+// const BASE_URL = "http://127.0.0.1:8000";
+
 // function App() {
+//   // Stores list of all products from backend
+//   const [products, setProducts] = useState([]);
+
+//   // Stores form input values (used for both add and edit)
+//   const [form, setForm] = useState({
+//     id: "",
+//     name: "",
+//     description: "",
+//     price: "",
+//     quantity: ""
+//   });
+
+//   // Stores ID entered in search box
+//   const [searchId, setSearchId] = useState("");
+
+//   // Tracks whether user is editing or adding
+//   const [isEditing, setIsEditing] = useState(false);
+
+//   // Runs once when component loads → fetch all products
+//   useEffect(() => {
+//     fetchProducts();
+//   }, []);
+
+//   // Fetch all products from backend
+//   const fetchProducts = async () => {
+//     try {
+//       const res = await fetch(`${BASE_URL}/products`);
+//       const data = await res.json();
+//       setProducts(data); // store products in state
+//     } catch (err) {
+//       console.error("Error fetching products:", err);
+//     }
+//   };
+
+//   // Handles input changes and updates form state dynamically
+//   const handleChange = (e) => {
+//     setForm({ ...form, [e.target.name]: e.target.value });
+//   };
+
+//   // Adds a new product (POST request)
+//   const addProduct = async () => {
+//     try {
+//       await fetch(`${BASE_URL}/products`, {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json"
+//         },
+//         body: JSON.stringify({
+//           ...form,
+//           id: Number(form.id),           // convert to number
+//           price: Number(form.price),
+//           quantity: Number(form.quantity)
+//         })
+//       });
+
+//       fetchProducts();   // refresh list after adding
+
+//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // ✅ clear form
+//     } catch (err) {
+//       console.error("Error adding product:", err);
+//     }
+//   };
+
+//   // Updates an existing product (PUT request)
+//   const updateProduct = async () => {
+//     try {
+//       await fetch(`${BASE_URL}/products/${form.id}`, {
+//         method: "PUT",
+//         headers: {
+//           "Content-Type": "application/json"
+//         },
+//         body: JSON.stringify({
+//           ...form,
+//           id: Number(form.id),
+//           price: Number(form.price),
+//           quantity: Number(form.quantity)
+//         })
+//       });
+
+//       setIsEditing(false); // exit edit mode
+//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // clear form
+//       fetchProducts(); // refresh updated data
+//     } catch (err) {
+//       console.error("Error updating product:", err);
+//     }
+//   };
+
+//   // Loads selected product into form for editing
+//   const editProduct = (product) => {
+//     setForm(product);      // fill form with existing data
+//     setIsEditing(true);    // switch to edit mode
+//   };
+
+//   // Deletes a product (DELETE request)
+//   const deleteProduct = async (id) => {
+//     try {
+//       await fetch(`${BASE_URL}/products/${id}`, {
+//         method: "DELETE"
+//       });
+//       fetchProducts(); // refresh list after deletion
+//     } catch (err) {
+//       console.error("Error deleting product:", err);
+//     }
+//   };
+
+//   // Searches product by ID
+//   const searchProduct = async () => {
+//   try {
+//     const res = await fetch(`${BASE_URL}/products/${searchId}`);
+
+//     if (!res.ok) {          // show only searched product
+//       alert("Product not found");
+//       return;
+//     }
+
+//     const data = await res.json();
+//     setProducts([data]);
+
+//   } catch (err) {
+//     console.error("Error searching product:", err);
+//   }
+// };
+
+
 //   return (
-//     <div>
-//       <h1>APP IS WORKING</h1>
+//     <div className="container">
+//       <h1>🚀 Project X Dashboard</h1>
+
+//       {/* FORM SECTION */}
+//       <div className="form">
+//         {/* Controlled inputs → value tied to state */}
+//         <input name="id" value={form.id} placeholder="ID" onChange={handleChange} />
+//         <input name="name" value={form.name} placeholder="Name" onChange={handleChange} />
+//         <input name="description" value={form.description} placeholder="Description" onChange={handleChange} />
+//         <input name="price" value={form.price} placeholder="Price" onChange={handleChange} />
+//         <input name="quantity" value={form.quantity} placeholder="Quantity" onChange={handleChange} />
+
+//         {/* Button switches between Add and Update */}
+//         <button onClick={isEditing ? updateProduct : addProduct}>
+//           {isEditing ? "Update Product" : "Add Product"}
+//         </button>
+
+//         {/* Cancel button appears only in edit mode */}
+//         {isEditing && (
+//           <button
+//             onClick={() => {
+//               setIsEditing(false); // exit edit mode
+//               setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // reset form
+//             }}
+//           >
+//             Cancel
+//           </button>
+//         )}
+//       </div>
+
+//       {/* SEARCH SECTION */}
+//       <div className="search">
+//         <input
+//           placeholder="Search by ID"
+//           value={searchId}
+//           onChange={(e) => setSearchId(e.target.value)}
+//         />
+//         <button onClick={searchProduct}>Search</button>
+//         <button onClick={fetchProducts}>Reset</button>
+//       </div>
+
+//       {/* PRODUCT LIST */}
+//       <div className="products">
+//         {products.map((p) => (
+//           <div key={p.id} className="card">
+//             <h3>{p.name}</h3>
+//             <p><strong>ID:</strong> {p.id}</p>
+//             <p>{p.description}</p>
+//             <p><strong>Price:</strong> ₹{p.price}</p>
+//             <p><strong>Stock:</strong> {p.quantity}</p>
+
+//             {/* Edit fills form */}
+//             <button onClick={() => editProduct(p)}>Edit</button>
+
+//             {/* Delete removes product */}
+//             <button onClick={() => deleteProduct(p.id)}>Delete</button>
+//           </div>
+//         ))}
+//       </div>
 //     </div>
 //   );
 // }
 
 // export default App;
+
+// // function App() {
+// //   return (
+// //     <div>
+// //       <h1>APP IS WORKING</h1>
+// //     </div>
+// //   );
+// // }
+
+// // export default App;
