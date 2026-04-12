@@ -25,7 +25,7 @@ class Product(Base):
 
     __tablename__ = "products"
 
-    # ✅ AUTO-INCREMENT PRIMARY KEY
+    #  AUTO-INCREMENT PRIMARY KEY
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     name = Column(String)

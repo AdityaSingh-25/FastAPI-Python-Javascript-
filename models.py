@@ -23,4 +23,4 @@ class ProductResponse(ProductBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)  
-    # ✅ REQUIRED for SQLAlchemy → Pydantic conversion
+    #  REQUIRED for SQLAlchemy → Pydantic conversion

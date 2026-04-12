@@ -8,7 +8,7 @@ const BASE_URL = "http://127.0.0.1:8000";
 function App() {
   const [products, setProducts] = useState([]);
 
-  // ❌ REMOVED id from form (backend auto-generates it)
+  //  REMOVED id from form (backend auto-generates it)
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -29,7 +29,7 @@ function App() {
     setTimeout(() => setToast(""), 2000);
   };
 
-  // ✅ Added error handling
+  //  Added error handling
   const fetchProducts = async () => {
     try {
       setLoading(true);
@@ -45,13 +45,13 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      showToast("Error fetching products ❌");
+      showToast("Error fetching products ");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ FIXED: Do NOT send id
+  //  FIXED: Do NOT send id
   const addProduct = async () => {
     try {
       const res = await fetch(`${BASE_URL}/products`, {
@@ -65,15 +65,15 @@ function App() {
         })
       });
 
-      // ✅ handle backend validation errors
+      //  handle backend validation errors
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.detail || "Failed to add product");
       }
 
-      showToast("Product Added ✅");
+      showToast("Product Added ");
 
-      // ✅ reset form after adding
+      //  reset form after adding
       setForm({
         name: "",
         description: "",
@@ -85,11 +85,11 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      showToast(err.message || "Error adding product ❌");
+      showToast(err.message || "Error adding product ");
     }
   };
 
-  // ✅ FIXED: send only required fields (no id in body)
+  //  FIXED: send only required fields (no id in body)
   const updateProduct = async () => {
     try {
       const res = await fetch(`${BASE_URL}/products/${form.id}`, {
@@ -114,11 +114,11 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      showToast(err.message || "Error updating ❌");
+      showToast(err.message || "Error updating ");
     }
   };
 
-  // ✅ Added error handling
+  //  Added error handling
   const deleteProduct = async (id) => {
     try {
       const res = await fetch(`${BASE_URL}/products/${id}`, {
@@ -129,16 +129,16 @@ function App() {
         throw new Error("Failed to delete product");
       }
 
-      showToast("Product Deleted ❌");
+      showToast("Product Deleted ");
       fetchProducts();
 
     } catch (err) {
       console.error(err);
-      showToast("Error deleting ❌");
+      showToast("Error deleting ");
     }
   };
 
-  // ✅ Keep id only for editing (not for creation)
+  //  Keep id only for editing (not for creation)
   const openEditModal = (product) => {
     setForm({
       id: product.id, // needed for update API
@@ -160,7 +160,7 @@ function App() {
       {/* Add Form */}
       <div className="form">
 
-        {/* ❌ REMOVED ID INPUT (backend generates it) */}
+        {/*  REMOVED ID INPUT (backend generates it) */}
 
         <input
           placeholder="Name"
@@ -345,7 +345,7 @@ export default App;
 
 //       fetchProducts();   // refresh list after adding
 
-//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // ✅ clear form
+//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); //  clear form
 //     } catch (err) {
 //       console.error("Error adding product:", err);
 //     }

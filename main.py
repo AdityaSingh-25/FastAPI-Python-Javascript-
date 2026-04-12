@@ -37,7 +37,7 @@ def get_db():
         db.close()
 
 
-# ✅ HELPER FUNCTION (NEW)
+#  HELPER FUNCTION (NEW)
 def to_product_response(p):
     return ProductResponse(
         id=p.id,
@@ -46,7 +46,7 @@ def to_product_response(p):
         price=p.price,
         quantity=p.quantity
     )
-    # ✅ Converts SQLAlchemy object → Pydantic model
+    #  Converts SQLAlchemy object → Pydantic model
     # Fixes "value is not a valid dict" error
 
 
@@ -78,7 +78,7 @@ def get_all_products(
     )
 
     return [to_product_response(p) for p in products]
-    # ✅ FIX: Manual conversion avoids FastAPI serialization issues
+    #  FIX: Manual conversion avoids FastAPI serialization issues
 
 
 # GET PRODUCT BY ID (FIXED)
@@ -93,7 +93,7 @@ def get_product_by_id(id: int, db: DBSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
 
     return to_product_response(product)
-    # ✅ FIX: Explicit conversion
+    #  FIX: Explicit conversion
 
 
 # CREATE PRODUCT (FIXED)
@@ -110,7 +110,7 @@ def add_product(product: ProductCreate, db: DBSession = Depends(get_db)):
         logger.info(f"Product created: ID={db_product.id}")
 
         return to_product_response(db_product)
-        # ✅ FIX: return converted object
+        #  FIX: return converted object
 
     except Exception as e:
         db.rollback()
@@ -139,7 +139,7 @@ def update_product(id: int, updated_product: ProductCreate, db: DBSession = Depe
         logger.info(f"Product updated: ID={id}")
 
         return to_product_response(db_product)
-        # ✅ FIX: return converted object
+        #  FIX: return converted object
 
     except Exception as e:
         db.rollback()
