@@ -7,8 +7,9 @@ const BASE_URL = "http://127.0.0.1:8000";
 
 function App() {
   const [products, setProducts] = useState([]);
+
+  // ❌ REMOVED id from form (backend auto-generates it)
   const [form, setForm] = useState({
-    id: "",
     name: "",
     description: "",
     price: "",
@@ -16,7 +17,6 @@ function App() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -29,53 +29,124 @@ function App() {
     setTimeout(() => setToast(""), 2000);
   };
 
+  // ✅ Added error handling
   const fetchProducts = async () => {
-    setLoading(true);
-    const res = await fetch(`${BASE_URL}/products`);
-    const data = await res.json();
-    setProducts(data);
-    setLoading(false);
+    try {
+      setLoading(true);
+
+      const res = await fetch(`${BASE_URL}/products`);
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch products");
+      }
+
+      const data = await res.json();
+      setProducts(data);
+
+    } catch (err) {
+      console.error(err);
+      showToast("Error fetching products ❌");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // ✅ FIXED: Do NOT send id
   const addProduct = async () => {
-    await fetch(`${BASE_URL}/products`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        id: Number(form.id),
-        price: Number(form.price),
-        quantity: Number(form.quantity)
-      })
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          description: form.description,
+          price: Number(form.price),
+          quantity: Number(form.quantity)
+        })
+      });
 
-    showToast("Product Added ✅");
-    fetchProducts();
+      // ✅ handle backend validation errors
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to add product");
+      }
+
+      showToast("Product Added ✅");
+
+      // ✅ reset form after adding
+      setForm({
+        name: "",
+        description: "",
+        price: "",
+        quantity: ""
+      });
+
+      fetchProducts();
+
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Error adding product ❌");
+    }
   };
 
+  // ✅ FIXED: send only required fields (no id in body)
   const updateProduct = async () => {
-    await fetch(`${BASE_URL}/products/${form.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/products/${form.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          description: form.description,
+          price: Number(form.price),
+          quantity: Number(form.quantity)
+        })
+      });
 
-    setShowModal(false);
-    showToast("Product Updated ✏️");
-    fetchProducts();
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to update product");
+      }
+
+      setShowModal(false);
+      showToast("Product Updated ✏️");
+      fetchProducts();
+
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Error updating ❌");
+    }
   };
 
+  // ✅ Added error handling
   const deleteProduct = async (id) => {
-    await fetch(`${BASE_URL}/products/${id}`, {
-      method: "DELETE"
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/products/${id}`, {
+        method: "DELETE"
+      });
 
-    showToast("Product Deleted ❌");
-    fetchProducts();
+      if (!res.ok) {
+        throw new Error("Failed to delete product");
+      }
+
+      showToast("Product Deleted ❌");
+      fetchProducts();
+
+    } catch (err) {
+      console.error(err);
+      showToast("Error deleting ❌");
+    }
   };
 
+  // ✅ Keep id only for editing (not for creation)
   const openEditModal = (product) => {
-    setForm(product);
+    setForm({
+      id: product.id, // needed for update API
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      quantity: product.quantity
+    });
     setShowModal(true);
   };
 
@@ -88,11 +159,32 @@ function App() {
 
       {/* Add Form */}
       <div className="form">
-        <input placeholder="ID" onChange={(e) => setForm({ ...form, id: e.target.value })} />
-        <input placeholder="Name" onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input placeholder="Description" onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        <input placeholder="Price" onChange={(e) => setForm({ ...form, price: e.target.value })} />
-        <input placeholder="Quantity" onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+
+        {/* ❌ REMOVED ID INPUT (backend generates it) */}
+
+        <input
+          placeholder="Name"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+
+        <input
+          placeholder="Description"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+
+        <input
+          placeholder="Price"
+          value={form.price}
+          onChange={(e) => setForm({ ...form, price: e.target.value })}
+        />
+
+        <input
+          placeholder="Quantity"
+          value={form.quantity}
+          onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+        />
 
         <button onClick={addProduct}>Add Product</button>
       </div>
@@ -137,10 +229,25 @@ function App() {
           <div className="modal-content">
             <h2>Edit Product</h2>
 
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
-            <input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+
+            <input
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+
+            <input
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: e.target.value })}
+            />
+
+            <input
+              value={form.quantity}
+              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+            />
 
             <button onClick={updateProduct}>Update</button>
             <button onClick={() => setShowModal(false)}>Cancel</button>
@@ -152,7 +259,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

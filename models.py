@@ -1,22 +1,26 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
-# Base schema with validation (NEW)
+# Base schema with validation
 class ProductBase(BaseModel):
-    name: str = Field(..., min_length=2)          # Ensures name is at least 2 chars
-    description: str = Field(..., min_length=5)   # Ensures meaningful description
-    price: float = Field(..., gt=0)               # Price must be > 0
-    quantity: int = Field(..., ge=0)              # Quantity cannot be negative
+    name: str = Field(..., min_length=2)
+    description: str = Field(..., min_length=5)
+    price: float = Field(..., gt=0)
+    quantity: int = Field(..., ge=0)
 
 
-# Used when creating/updating product (NEW)
+# Create schema
 class ProductCreate(ProductBase):
     pass
 
 
-# Response model (NEW)
-class ProductResponse(ProductBase):
-    id: int   # Include ID in response
+# Update schema
+class ProductUpdate(ProductBase):
+    pass
 
-    class Config:
-        orm_mode = True   # ✅ FIX: required for SQLAlchemy → Pydantic 
-        # Allows returning SQLAlchemy models directly (IMPORTANT)
+
+# Response schema
+class ProductResponse(ProductBase):
+    id: int
+
+    model_config = ConfigDict(from_attributes=True)  
+    # ✅ REQUIRED for SQLAlchemy → Pydantic conversion
