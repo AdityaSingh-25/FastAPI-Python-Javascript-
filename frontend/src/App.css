@@ -89,6 +89,13 @@ h2 {
   max-width: 690px;
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .refresh-button,
 .form-actions button:first-child {
   background: var(--primary);
@@ -105,7 +112,7 @@ h2 {
 .metric-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 24px;
 }
 
@@ -139,6 +146,14 @@ h2 {
   color: var(--warning);
 }
 
+.metric-card.danger {
+  border-color: rgba(194, 65, 12, 0.35);
+}
+
+.metric-card.danger strong {
+  color: var(--danger);
+}
+
 .dashboard-grid {
   align-items: start;
   display: grid;
@@ -146,8 +161,14 @@ h2 {
   grid-template-columns: minmax(310px, 380px) minmax(0, 1fr);
 }
 
+.sidebar-stack {
+  display: grid;
+  gap: 16px;
+}
+
 .product-form,
-.product-panel {
+.product-panel,
+.insights-panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -214,6 +235,63 @@ textarea:focus {
   color: var(--ink);
   min-height: 44px;
   padding: 0 16px;
+}
+
+.insights-panel {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.insight-block {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.insight-block span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.insight-block strong {
+  font-size: 1rem;
+}
+
+.insight-block p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
+.insight-block ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.insight-block li {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.insight-block li strong {
+  font-size: 0.94rem;
+}
+
+.insight-block li span {
+  background: rgba(217, 119, 6, 0.13);
+  border-radius: 999px;
+  color: var(--warning);
+  padding: 5px 9px;
+  text-transform: none;
 }
 
 .product-panel {
@@ -339,7 +417,7 @@ td span {
 
 @media (max-width: 1100px) {
   .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dashboard-grid {
@@ -356,6 +434,14 @@ td span {
   .table-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: stretch;
+  }
+
+  .header-actions button {
+    width: 100%;
   }
 
   .metric-grid,

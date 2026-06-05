@@ -1,17 +1,29 @@
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session as DBSession
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from typing import List
 import logging
 
 import database_models
 from database import Session, engine
-from models import ProductCreate, ProductResponse, ProductSummary
+from models import ProductCreate, ProductInsights, ProductResponse, ProductSummary
+
+LOW_STOCK_THRESHOLD = 5
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    database_models.Base.metadata.create_all(bind=engine)
+    yield
+
 
 app = FastAPI(
     title="SaaS Product Management Dashboard API",
     summary="Inventory and catalog management APIs for a SaaS product operations dashboard.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-database_models.Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
@@ -60,15 +70,35 @@ def to_product_response(p):
     )
 
 
+def get_stock_status(quantity: int):
+    if quantity == 0:
+        return "out"
+    if quantity <= LOW_STOCK_THRESHOLD:
+        return "low"
+    return "healthy"
+
+
 @app.get("/products", response_model=List[ProductResponse])
 def get_all_products(
     skip: int = 0,
     limit: int = Query(default=100, ge=1, le=500),
     min_price: float = Query(default=0, ge=0),
     max_price: float = Query(default=100000, ge=0),
+    search: str = "",
+    stock_status: str = "all",
+    sort_by: str = "name",
     db: DBSession = Depends(get_db)
 ):
-    logger.info(f"Fetching products | skip={skip}, limit={limit}, price={min_price}-{max_price}")
+    logger.info(
+        "Fetching products | skip=%s, limit=%s, price=%s-%s, search=%s, stock=%s, sort=%s",
+        skip,
+        limit,
+        min_price,
+        max_price,
+        search,
+        stock_status,
+        sort_by,
+    )
 
     if min_price > max_price:
         raise HTTPException(
@@ -76,15 +106,53 @@ def get_all_products(
             detail="min_price cannot be greater than max_price"
         )
 
-    products = (
+    if stock_status not in {"all", "healthy", "low", "out"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="stock_status must be one of: all, healthy, low, out",
+        )
+
+    if sort_by not in {"name", "stock", "value"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sort_by must be one of: name, stock, value",
+        )
+
+    query = (
         db.query(database_models.Product)
         .filter(database_models.Product.price >= min_price)
         .filter(database_models.Product.price <= max_price)
-        .order_by(database_models.Product.id.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
     )
+
+    if search.strip():
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                database_models.Product.name.ilike(search_term),
+                database_models.Product.description.ilike(search_term),
+            )
+        )
+
+    if stock_status == "healthy":
+        query = query.filter(database_models.Product.quantity > LOW_STOCK_THRESHOLD)
+    elif stock_status == "low":
+        query = query.filter(
+            database_models.Product.quantity > 0,
+            database_models.Product.quantity <= LOW_STOCK_THRESHOLD,
+        )
+    elif stock_status == "out":
+        query = query.filter(database_models.Product.quantity == 0)
+
+    products = query.all()
+
+    if sort_by == "value":
+        products.sort(key=lambda product: product.price * product.quantity, reverse=True)
+    elif sort_by == "stock":
+        products.sort(key=lambda product: product.quantity)
+    else:
+        products.sort(key=lambda product: product.name.lower())
+
+    products = products[skip:skip + limit]
 
     return [to_product_response(p) for p in products]
 
@@ -94,13 +162,47 @@ def get_product_summary(db: DBSession = Depends(get_db)):
     products = db.query(database_models.Product).all()
     total_inventory = sum(product.quantity for product in products)
     total_catalog_value = sum(product.price * product.quantity for product in products)
-    low_stock_count = sum(1 for product in products if product.quantity <= 5)
+    low_stock_count = sum(1 for product in products if get_stock_status(product.quantity) == "low")
+    out_of_stock_count = sum(1 for product in products if get_stock_status(product.quantity) == "out")
+    average_price = sum(product.price for product in products) / len(products) if products else 0
 
     return ProductSummary(
         total_products=len(products),
         total_inventory=total_inventory,
         total_catalog_value=round(total_catalog_value, 2),
         low_stock_count=low_stock_count,
+        out_of_stock_count=out_of_stock_count,
+        average_price=round(average_price, 2),
+    )
+
+
+@app.get("/products/insights", response_model=ProductInsights)
+def get_product_insights(db: DBSession = Depends(get_db)):
+    products = db.query(database_models.Product).all()
+    highest_value_product = max(
+        products,
+        key=lambda product: product.price * product.quantity,
+        default=None,
+    )
+    reorder_recommendations = [
+        product for product in products if get_stock_status(product.quantity) == "low"
+    ]
+    out_of_stock_products = [
+        product for product in products if get_stock_status(product.quantity) == "out"
+    ]
+
+    reorder_recommendations.sort(key=lambda product: product.quantity)
+    out_of_stock_products.sort(key=lambda product: product.name.lower())
+
+    return ProductInsights(
+        highest_value_product=to_product_response(highest_value_product)
+        if highest_value_product else None,
+        reorder_recommendations=[
+            to_product_response(product) for product in reorder_recommendations
+        ],
+        out_of_stock_products=[
+            to_product_response(product) for product in out_of_stock_products
+        ],
     )
 
 

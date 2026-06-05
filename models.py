@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -27,3 +29,11 @@ class ProductSummary(BaseModel):
     total_inventory: int
     total_catalog_value: float
     low_stock_count: int
+    out_of_stock_count: int
+    average_price: float
+
+
+class ProductInsights(BaseModel):
+    highest_value_product: Optional[ProductResponse]
+    reorder_recommendations: List[ProductResponse]
+    out_of_stock_products: List[ProductResponse]

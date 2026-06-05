@@ -23,8 +23,18 @@ function getStockStatus(quantity) {
   return "Healthy";
 }
 
+function escapeCsv(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
 function App() {
   const [products, setProducts] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [insights, setInsights] = useState({
+    highest_value_product: null,
+    reorder_recommendations: [],
+    out_of_stock_products: []
+  });
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -34,67 +44,79 @@ function App() {
   const [stockFilter, setStockFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const metrics = useMemo(() => {
+  const localMetrics = useMemo(() => {
     const totalProducts = products.length;
     const totalInventory = products.reduce((sum, product) => sum + product.quantity, 0);
     const catalogValue = products.reduce(
       (sum, product) => sum + product.price * product.quantity,
       0
     );
-    const lowStock = products.filter((product) => product.quantity <= 5).length;
+    const lowStock = products.filter((product) => product.quantity > 0 && product.quantity <= 5).length;
+    const outOfStock = products.filter((product) => product.quantity === 0).length;
+    const averagePrice = totalProducts
+      ? products.reduce((sum, product) => sum + product.price, 0) / totalProducts
+      : 0;
 
-    return { totalProducts, totalInventory, catalogValue, lowStock };
+    return { totalProducts, totalInventory, catalogValue, lowStock, outOfStock, averagePrice };
   }, [products]);
 
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const metrics = {
+    totalProducts: summary?.total_products ?? localMetrics.totalProducts,
+    totalInventory: summary?.total_inventory ?? localMetrics.totalInventory,
+    catalogValue: summary?.total_catalog_value ?? localMetrics.catalogValue,
+    lowStock: summary?.low_stock_count ?? localMetrics.lowStock,
+    outOfStock: summary?.out_of_stock_count ?? localMetrics.outOfStock,
+    averagePrice: summary?.average_price ?? localMetrics.averagePrice
+  };
 
-    return [...products]
-      .filter((product) => {
-        const matchesSearch =
-          product.name.toLowerCase().includes(query) ||
-          product.description.toLowerCase().includes(query);
-        const status = getStockStatus(product.quantity);
-        const matchesStock = stockFilter === "all" || status === stockFilter;
-
-        return matchesSearch && matchesStock;
-      })
-      .sort((a, b) => {
-        if (sortBy === "value") {
-          return b.price * b.quantity - a.price * a.quantity;
-        }
-
-        if (sortBy === "stock") {
-          return a.quantity - b.quantity;
-        }
-
-        return a.name.localeCompare(b.name);
-      });
-  }, [products, search, stockFilter, sortBy]);
+  useEffect(() => {
+    fetchDashboardData();
+  }, [search, stockFilter, sortBy]);
 
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(""), 2400);
   };
 
-  const fetchProducts = async () => {
+  const buildProductQuery = () => {
+    const params = new URLSearchParams({
+      limit: "500",
+      sort_by: sortBy,
+      stock_status: stockFilter
+    });
+
+    if (search.trim()) {
+      params.set("search", search.trim());
+    }
+
+    return params.toString();
+  };
+
+  const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${BASE_URL}/products?limit=500`);
+      const [productsRes, summaryRes, insightsRes] = await Promise.all([
+        fetch(`${BASE_URL}/products?${buildProductQuery()}`),
+        fetch(`${BASE_URL}/products/summary`),
+        fetch(`${BASE_URL}/products/insights`)
+      ]);
 
-      if (!res.ok) {
-        throw new Error("Failed to fetch products");
+      if (!productsRes.ok || !summaryRes.ok || !insightsRes.ok) {
+        throw new Error("Failed to fetch dashboard data");
       }
 
-      const data = await res.json();
-      setProducts(data);
+      const [productsData, summaryData, insightsData] = await Promise.all([
+        productsRes.json(),
+        summaryRes.json(),
+        insightsRes.json()
+      ]);
+
+      setProducts(productsData);
+      setSummary(summaryData);
+      setInsights(insightsData);
     } catch (err) {
       console.error(err);
-      showToast("Unable to load products");
+      showToast("Unable to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -157,7 +179,7 @@ function App() {
 
       showToast(editingProduct ? "Product updated" : "Product added");
       resetForm();
-      fetchProducts();
+      fetchDashboardData();
     } catch (err) {
       console.error(err);
       showToast(err.message || "Unable to save product");
@@ -177,7 +199,7 @@ function App() {
       }
 
       showToast("Product deleted");
-      fetchProducts();
+      fetchDashboardData();
     } catch (err) {
       console.error(err);
       showToast("Unable to delete product");
@@ -194,6 +216,36 @@ function App() {
     });
   };
 
+  const exportCsv = () => {
+    if (products.length === 0) {
+      showToast("No products to export");
+      return;
+    }
+
+    const header = ["ID", "Name", "Description", "Price", "Quantity", "Status", "Catalog Value"];
+    const rows = products.map((product) => [
+      product.id,
+      product.name,
+      product.description,
+      product.price,
+      product.quantity,
+      getStockStatus(product.quantity),
+      product.price * product.quantity
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "saas-products.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast("CSV exported");
+  };
+
   return (
     <main className="app-shell">
       {toast && <div className="toast">{toast}</div>}
@@ -206,9 +258,14 @@ function App() {
             Track catalog health, inventory exposure, and product updates from one focused workspace.
           </p>
         </div>
-        <button className="refresh-button" onClick={fetchProducts} disabled={loading}>
-          {loading ? "Syncing" : "Refresh"}
-        </button>
+        <div className="header-actions">
+          <button className="secondary-button" onClick={exportCsv} disabled={loading}>
+            Export CSV
+          </button>
+          <button className="refresh-button" onClick={fetchDashboardData} disabled={loading}>
+            {loading ? "Syncing" : "Refresh"}
+          </button>
+        </div>
       </section>
 
       <section className="metric-grid" aria-label="Product performance metrics">
@@ -224,73 +281,114 @@ function App() {
           <span>Catalog value</span>
           <strong>{formatCurrency(metrics.catalogValue)}</strong>
         </article>
+        <article className="metric-card">
+          <span>Average price</span>
+          <strong>{formatCurrency(metrics.averagePrice)}</strong>
+        </article>
         <article className="metric-card alert">
-          <span>Needs attention</span>
+          <span>Low stock</span>
           <strong>{metrics.lowStock}</strong>
+        </article>
+        <article className="metric-card danger">
+          <span>Out of stock</span>
+          <strong>{metrics.outOfStock}</strong>
         </article>
       </section>
 
       <section className="dashboard-grid">
-        <form className="product-form" onSubmit={saveProduct}>
-          <div className="section-heading">
-            <p className="eyebrow">Catalog control</p>
-            <h2>{editingProduct ? "Edit product" : "Add product"}</h2>
-          </div>
+        <aside className="sidebar-stack">
+          <form className="product-form" onSubmit={saveProduct}>
+            <div className="section-heading">
+              <p className="eyebrow">Catalog control</p>
+              <h2>{editingProduct ? "Edit product" : "Add product"}</h2>
+            </div>
 
-          <label>
-            Product name
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Starter plan"
-            />
-          </label>
-
-          <label>
-            Description
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Self-serve subscription plan for small teams"
-              rows="4"
-            />
-          </label>
-
-          <div className="field-row">
             <label>
-              Price
+              Product name
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-                placeholder="49"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Starter plan"
               />
             </label>
+
             <label>
-              Quantity
-              <input
-                type="number"
-                min="0"
-                value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                placeholder="25"
+              Description
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Self-serve subscription plan for small teams"
+                rows="4"
               />
             </label>
-          </div>
 
-          <div className="form-actions">
-            <button type="submit" disabled={saving}>
-              {saving ? "Saving" : editingProduct ? "Update product" : "Add product"}
-            </button>
-            {editingProduct && (
-              <button type="button" className="secondary-button" onClick={resetForm}>
-                Cancel
+            <div className="field-row">
+              <label>
+                Price
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
+                  placeholder="49"
+                />
+              </label>
+              <label>
+                Quantity
+                <input
+                  type="number"
+                  min="0"
+                  value={form.quantity}
+                  onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                  placeholder="25"
+                />
+              </label>
+            </div>
+
+            <div className="form-actions">
+              <button type="submit" disabled={saving}>
+                {saving ? "Saving" : editingProduct ? "Update product" : "Add product"}
               </button>
-            )}
-          </div>
-        </form>
+              {editingProduct && (
+                <button type="button" className="secondary-button" onClick={resetForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+
+          <section className="insights-panel">
+            <div className="section-heading">
+              <p className="eyebrow">Insights</p>
+              <h2>Ops focus</h2>
+            </div>
+
+            <div className="insight-block">
+              <span>Highest value</span>
+              <strong>{insights.highest_value_product?.name || "No product yet"}</strong>
+              {insights.highest_value_product && (
+                <p>{formatCurrency(insights.highest_value_product.price * insights.highest_value_product.quantity)}</p>
+              )}
+            </div>
+
+            <div className="insight-block">
+              <span>Reorder queue</span>
+              {insights.reorder_recommendations.length === 0 ? (
+                <p>No low-stock products</p>
+              ) : (
+                <ul>
+                  {insights.reorder_recommendations.slice(0, 4).map((product) => (
+                    <li key={product.id}>
+                      <strong>{product.name}</strong>
+                      <span>{product.quantity} left</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </aside>
 
         <section className="product-panel">
           <div className="table-toolbar">
@@ -307,9 +405,9 @@ function App() {
               />
               <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
                 <option value="all">All stock</option>
-                <option value="Healthy">Healthy</option>
-                <option value="Low stock">Low stock</option>
-                <option value="Out of stock">Out of stock</option>
+                <option value="healthy">Healthy</option>
+                <option value="low">Low stock</option>
+                <option value="out">Out of stock</option>
               </select>
               <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="name">Name</option>
@@ -338,14 +436,14 @@ function App() {
                       Loading product data
                     </td>
                   </tr>
-                ) : filteredProducts.length === 0 ? (
+                ) : products.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="empty-state">
                       No products match this view
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.map((product) => {
+                  products.map((product) => {
                     const status = getStockStatus(product.quantity);
 
                     return (
