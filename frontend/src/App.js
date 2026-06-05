@@ -1,40 +1,90 @@
-
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+const EMPTY_FORM = {
+  name: "",
+  description: "",
+  price: "",
+  quantity: ""
+};
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(value || 0);
+}
+
+function getStockStatus(quantity) {
+  if (quantity === 0) return "Out of stock";
+  if (quantity <= 5) return "Low stock";
+  return "Healthy";
+}
 
 function App() {
   const [products, setProducts] = useState([]);
-
-  //  REMOVED id from form (backend auto-generates it)
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    price: "",
-    quantity: ""
-  });
-
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [search, setSearch] = useState("");
+  const [stockFilter, setStockFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name");
 
   useEffect(() => {
     fetchProducts();
   }, []);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 2000);
+  const metrics = useMemo(() => {
+    const totalProducts = products.length;
+    const totalInventory = products.reduce((sum, product) => sum + product.quantity, 0);
+    const catalogValue = products.reduce(
+      (sum, product) => sum + product.price * product.quantity,
+      0
+    );
+    const lowStock = products.filter((product) => product.quantity <= 5).length;
+
+    return { totalProducts, totalInventory, catalogValue, lowStock };
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return [...products]
+      .filter((product) => {
+        const matchesSearch =
+          product.name.toLowerCase().includes(query) ||
+          product.description.toLowerCase().includes(query);
+        const status = getStockStatus(product.quantity);
+        const matchesStock = stockFilter === "all" || status === stockFilter;
+
+        return matchesSearch && matchesStock;
+      })
+      .sort((a, b) => {
+        if (sortBy === "value") {
+          return b.price * b.quantity - a.price * a.quantity;
+        }
+
+        if (sortBy === "stock") {
+          return a.quantity - b.quantity;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+  }, [products, search, stockFilter, sortBy]);
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2400);
   };
 
-  //  Added error handling
   const fetchProducts = async () => {
     try {
       setLoading(true);
-
-      const res = await fetch(`${BASE_URL}/products`);
+      const res = await fetch(`${BASE_URL}/products?limit=500`);
 
       if (!res.ok) {
         throw new Error("Failed to fetch products");
@@ -42,83 +92,80 @@ function App() {
 
       const data = await res.json();
       setProducts(data);
-
     } catch (err) {
       console.error(err);
-      showToast("Error fetching products ");
+      showToast("Unable to load products");
     } finally {
       setLoading(false);
     }
   };
 
-  //  FIXED: Do NOT send id
-  const addProduct = async () => {
+  const validateForm = () => {
+    if (!form.name.trim() || !form.description.trim()) {
+      return "Name and description are required";
+    }
+
+    if (Number(form.price) <= 0) {
+      return "Price must be greater than 0";
+    }
+
+    if (Number(form.quantity) < 0) {
+      return "Quantity cannot be negative";
+    }
+
+    return "";
+  };
+
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setEditingProduct(null);
+  };
+
+  const saveProduct = async (event) => {
+    event.preventDefault();
+
+    const validationError = validateForm();
+    if (validationError) {
+      showToast(validationError);
+      return;
+    }
+
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      price: Number(form.price),
+      quantity: Number(form.quantity)
+    };
+
     try {
-      const res = await fetch(`${BASE_URL}/products`, {
-        method: "POST",
+      setSaving(true);
+      const url = editingProduct
+        ? `${BASE_URL}/products/${editingProduct.id}`
+        : `${BASE_URL}/products`;
+      const method = editingProduct ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          price: Number(form.price),
-          quantity: Number(form.quantity)
-        })
+        body: JSON.stringify(payload)
       });
 
-      //  handle backend validation errors
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to add product");
+        throw new Error(errorData.detail || "Failed to save product");
       }
 
-      showToast("Product Added ");
-
-      //  reset form after adding
-      setForm({
-        name: "",
-        description: "",
-        price: "",
-        quantity: ""
-      });
-
+      showToast(editingProduct ? "Product updated" : "Product added");
+      resetForm();
       fetchProducts();
-
     } catch (err) {
       console.error(err);
-      showToast(err.message || "Error adding product ");
+      showToast(err.message || "Unable to save product");
+    } finally {
+      setSaving(false);
     }
   };
 
-  //  FIXED: send only required fields (no id in body)
-  const updateProduct = async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/products/${form.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          price: Number(form.price),
-          quantity: Number(form.quantity)
-        })
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to update product");
-      }
-
-      setShowModal(false);
-      showToast("Product Updated ✏️");
-      fetchProducts();
-
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || "Error updating ");
-    }
-  };
-
-  //  Added error handling
   const deleteProduct = async (id) => {
     try {
       const res = await fetch(`${BASE_URL}/products/${id}`, {
@@ -129,361 +176,217 @@ function App() {
         throw new Error("Failed to delete product");
       }
 
-      showToast("Product Deleted ");
+      showToast("Product deleted");
       fetchProducts();
-
     } catch (err) {
       console.error(err);
-      showToast("Error deleting ");
+      showToast("Unable to delete product");
     }
   };
 
-  //  Keep id only for editing (not for creation)
-  const openEditModal = (product) => {
+  const startEditing = (product) => {
+    setEditingProduct(product);
     setForm({
-      id: product.id, // needed for update API
       name: product.name,
       description: product.description,
       price: product.price,
       quantity: product.quantity
     });
-    setShowModal(true);
   };
 
   return (
-    <div className="container">
-      <h1>🚀 Product Dashboard</h1>
-
-      {/* Toast */}
+    <main className="app-shell">
       {toast && <div className="toast">{toast}</div>}
 
-      {/* Add Form */}
-      <div className="form">
+      <section className="workspace-header">
+        <div>
+          <p className="eyebrow">SaaS operations</p>
+          <h1>Product Management Dashboard</h1>
+          <p className="header-copy">
+            Track catalog health, inventory exposure, and product updates from one focused workspace.
+          </p>
+        </div>
+        <button className="refresh-button" onClick={fetchProducts} disabled={loading}>
+          {loading ? "Syncing" : "Refresh"}
+        </button>
+      </section>
 
-        {/*  REMOVED ID INPUT (backend generates it) */}
+      <section className="metric-grid" aria-label="Product performance metrics">
+        <article className="metric-card">
+          <span>Total products</span>
+          <strong>{metrics.totalProducts}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Inventory units</span>
+          <strong>{metrics.totalInventory}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Catalog value</span>
+          <strong>{formatCurrency(metrics.catalogValue)}</strong>
+        </article>
+        <article className="metric-card alert">
+          <span>Needs attention</span>
+          <strong>{metrics.lowStock}</strong>
+        </article>
+      </section>
 
-        <input
-          placeholder="Name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
+      <section className="dashboard-grid">
+        <form className="product-form" onSubmit={saveProduct}>
+          <div className="section-heading">
+            <p className="eyebrow">Catalog control</p>
+            <h2>{editingProduct ? "Edit product" : "Add product"}</h2>
+          </div>
 
-        <input
-          placeholder="Description"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
-
-        <input
-          placeholder="Price"
-          value={form.price}
-          onChange={(e) => setForm({ ...form, price: e.target.value })}
-        />
-
-        <input
-          placeholder="Quantity"
-          value={form.quantity}
-          onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-        />
-
-        <button onClick={addProduct}>Add Product</button>
-      </div>
-
-      {/* Loader */}
-      {loading ? (
-        <div className="loader"></div>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Price</th>
-              <th>Stock</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td>{p.id}</td>
-                <td>{p.name}</td>
-                <td>{p.description}</td>
-                <td>₹{p.price}</td>
-                <td>{p.quantity}</td>
-                <td>
-                  <button onClick={() => openEditModal(p)}>Edit</button>
-                  <button onClick={() => deleteProduct(p.id)}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* Edit Modal */}
-      {showModal && (
-        <div className="modal">
-          <div className="modal-content">
-            <h2>Edit Product</h2>
-
+          <label>
+            Product name
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Starter plan"
             />
+          </label>
 
-            <input
+          <label>
+            Description
+            <textarea
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Self-serve subscription plan for small teams"
+              rows="4"
             />
+          </label>
 
-            <input
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-            />
-
-            <input
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-            />
-
-            <button onClick={updateProduct}>Update</button>
-            <button onClick={() => setShowModal(false)}>Cancel</button>
+          <div className="field-row">
+            <label>
+              Price
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                placeholder="49"
+              />
+            </label>
+            <label>
+              Quantity
+              <input
+                type="number"
+                min="0"
+                value={form.quantity}
+                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                placeholder="25"
+              />
+            </label>
           </div>
-        </div>
-      )}
-    </div>
+
+          <div className="form-actions">
+            <button type="submit" disabled={saving}>
+              {saving ? "Saving" : editingProduct ? "Update product" : "Add product"}
+            </button>
+            {editingProduct && (
+              <button type="button" className="secondary-button" onClick={resetForm}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+
+        <section className="product-panel">
+          <div className="table-toolbar">
+            <div className="section-heading">
+              <p className="eyebrow">Live catalog</p>
+              <h2>Products</h2>
+            </div>
+            <div className="toolbar-controls">
+              <input
+                className="search-input"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products"
+              />
+              <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+                <option value="all">All stock</option>
+                <option value="Healthy">Healthy</option>
+                <option value="Low stock">Low stock</option>
+                <option value="Out of stock">Out of stock</option>
+              </select>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <option value="name">Name</option>
+                <option value="stock">Lowest stock</option>
+                <option value="value">Highest value</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                  <th>Status</th>
+                  <th>Value</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" className="empty-state">
+                      Loading product data
+                    </td>
+                  </tr>
+                ) : filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="empty-state">
+                      No products match this view
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((product) => {
+                    const status = getStockStatus(product.quantity);
+
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <strong>{product.name}</strong>
+                          <span>{product.description}</span>
+                        </td>
+                        <td>{formatCurrency(product.price)}</td>
+                        <td>{product.quantity}</td>
+                        <td>
+                          <span className={`status-pill ${status.toLowerCase().replaceAll(" ", "-")}`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td>{formatCurrency(product.price * product.quantity)}</td>
+                        <td>
+                          <div className="row-actions">
+                            <button type="button" onClick={() => startEditing(product)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => deleteProduct(product.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
   );
 }
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import React, { useEffect, useState } from "react";
-// import "./App.css";
-
-// // Base URL for backend API
-// const BASE_URL = "http://127.0.0.1:8000";
-
-// function App() {
-//   // Stores list of all products from backend
-//   const [products, setProducts] = useState([]);
-
-//   // Stores form input values (used for both add and edit)
-//   const [form, setForm] = useState({
-//     id: "",
-//     name: "",
-//     description: "",
-//     price: "",
-//     quantity: ""
-//   });
-
-//   // Stores ID entered in search box
-//   const [searchId, setSearchId] = useState("");
-
-//   // Tracks whether user is editing or adding
-//   const [isEditing, setIsEditing] = useState(false);
-
-//   // Runs once when component loads → fetch all products
-//   useEffect(() => {
-//     fetchProducts();
-//   }, []);
-
-//   // Fetch all products from backend
-//   const fetchProducts = async () => {
-//     try {
-//       const res = await fetch(`${BASE_URL}/products`);
-//       const data = await res.json();
-//       setProducts(data); // store products in state
-//     } catch (err) {
-//       console.error("Error fetching products:", err);
-//     }
-//   };
-
-//   // Handles input changes and updates form state dynamically
-//   const handleChange = (e) => {
-//     setForm({ ...form, [e.target.name]: e.target.value });
-//   };
-
-//   // Adds a new product (POST request)
-//   const addProduct = async () => {
-//     try {
-//       await fetch(`${BASE_URL}/products`, {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json"
-//         },
-//         body: JSON.stringify({
-//           ...form,
-//           id: Number(form.id),           // convert to number
-//           price: Number(form.price),
-//           quantity: Number(form.quantity)
-//         })
-//       });
-
-//       fetchProducts();   // refresh list after adding
-
-//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); //  clear form
-//     } catch (err) {
-//       console.error("Error adding product:", err);
-//     }
-//   };
-
-//   // Updates an existing product (PUT request)
-//   const updateProduct = async () => {
-//     try {
-//       await fetch(`${BASE_URL}/products/${form.id}`, {
-//         method: "PUT",
-//         headers: {
-//           "Content-Type": "application/json"
-//         },
-//         body: JSON.stringify({
-//           ...form,
-//           id: Number(form.id),
-//           price: Number(form.price),
-//           quantity: Number(form.quantity)
-//         })
-//       });
-
-//       setIsEditing(false); // exit edit mode
-//       setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // clear form
-//       fetchProducts(); // refresh updated data
-//     } catch (err) {
-//       console.error("Error updating product:", err);
-//     }
-//   };
-
-//   // Loads selected product into form for editing
-//   const editProduct = (product) => {
-//     setForm(product);      // fill form with existing data
-//     setIsEditing(true);    // switch to edit mode
-//   };
-
-//   // Deletes a product (DELETE request)
-//   const deleteProduct = async (id) => {
-//     try {
-//       await fetch(`${BASE_URL}/products/${id}`, {
-//         method: "DELETE"
-//       });
-//       fetchProducts(); // refresh list after deletion
-//     } catch (err) {
-//       console.error("Error deleting product:", err);
-//     }
-//   };
-
-//   // Searches product by ID
-//   const searchProduct = async () => {
-//   try {
-//     const res = await fetch(`${BASE_URL}/products/${searchId}`);
-
-//     if (!res.ok) {          // show only searched product
-//       alert("Product not found");
-//       return;
-//     }
-
-//     const data = await res.json();
-//     setProducts([data]);
-
-//   } catch (err) {
-//     console.error("Error searching product:", err);
-//   }
-// };
-
-
-//   return (
-//     <div className="container">
-//       <h1>🚀 Project X Dashboard</h1>
-
-//       {/* FORM SECTION */}
-//       <div className="form">
-//         {/* Controlled inputs → value tied to state */}
-//         <input name="id" value={form.id} placeholder="ID" onChange={handleChange} />
-//         <input name="name" value={form.name} placeholder="Name" onChange={handleChange} />
-//         <input name="description" value={form.description} placeholder="Description" onChange={handleChange} />
-//         <input name="price" value={form.price} placeholder="Price" onChange={handleChange} />
-//         <input name="quantity" value={form.quantity} placeholder="Quantity" onChange={handleChange} />
-
-//         {/* Button switches between Add and Update */}
-//         <button onClick={isEditing ? updateProduct : addProduct}>
-//           {isEditing ? "Update Product" : "Add Product"}
-//         </button>
-
-//         {/* Cancel button appears only in edit mode */}
-//         {isEditing && (
-//           <button
-//             onClick={() => {
-//               setIsEditing(false); // exit edit mode
-//               setForm({ id: "", name: "", description: "", price: "", quantity: "" }); // reset form
-//             }}
-//           >
-//             Cancel
-//           </button>
-//         )}
-//       </div>
-
-//       {/* SEARCH SECTION */}
-//       <div className="search">
-//         <input
-//           placeholder="Search by ID"
-//           value={searchId}
-//           onChange={(e) => setSearchId(e.target.value)}
-//         />
-//         <button onClick={searchProduct}>Search</button>
-//         <button onClick={fetchProducts}>Reset</button>
-//       </div>
-
-//       {/* PRODUCT LIST */}
-//       <div className="products">
-//         {products.map((p) => (
-//           <div key={p.id} className="card">
-//             <h3>{p.name}</h3>
-//             <p><strong>ID:</strong> {p.id}</p>
-//             <p>{p.description}</p>
-//             <p><strong>Price:</strong> ₹{p.price}</p>
-//             <p><strong>Stock:</strong> {p.quantity}</p>
-
-//             {/* Edit fills form */}
-//             <button onClick={() => editProduct(p)}>Edit</button>
-
-//             {/* Delete removes product */}
-//             <button onClick={() => deleteProduct(p.id)}>Delete</button>
-//           </div>
-//         ))}
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default App;
-
-// // function App() {
-// //   return (
-// //     <div>
-// //       <h1>APP IS WORKING</h1>
-// //     </div>
-// //   );
-// // }
-
-// // export default App;

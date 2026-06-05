@@ -1,108 +1,54 @@
+# SaaS Product Management Dashboard
 
-# FastAPI + JavaScript Full Stack Application
-
-## Overview
-
-This project is a full stack web application built using FastAPI for the backend and JavaScript for the frontend. It demonstrates the development of RESTful APIs, database integration, and a simple user interface for interacting with backend services.
-
-The application is designed to showcase backend API design, data handling, and frontend integration in a scalable and modular structure.
-
----
+A full-stack SaaS product operations dashboard built with FastAPI, SQLAlchemy, and React. The app helps teams manage a product catalog, track inventory health, review catalog value, and perform day-to-day product CRUD workflows from a clean dashboard interface.
 
 ## Features
 
-* REST API built with FastAPI
-* CRUD operations for data management
-* Database integration
-* Frontend interface for interacting with APIs
-* Modular and scalable project structure
-
----
+- FastAPI REST API for product catalog management
+- React dashboard with product metrics, search, stock filters, and sorting
+- Create, update, and delete product records
+- Inventory health labels for healthy, low-stock, and out-of-stock products
+- Derived SaaS operations metrics including catalog value and total inventory
+- SQLite local development fallback with optional `DATABASE_URL` override
+- Interactive API docs at `/docs`
 
 ## Tech Stack
 
-**Backend**
-
-* FastAPI
-* Python
-
-**Frontend**
-
-* JavaScript
-* HTML / CSS
-
-**Database**
-
-* SQLite (or configured database)
-
-**Tools**
-
-* Git and GitHub for version control
-
----
+**Backend:** FastAPI, Python, SQLAlchemy, Pydantic  
+**Frontend:** React, JavaScript, CSS  
+**Database:** SQLite by default, configurable through `DATABASE_URL`
 
 ## Project Structure
 
+```text
+FastAPI_demo/
+├── main.py                 # FastAPI application and product routes
+├── database.py             # Database engine/session setup
+├── database_models.py      # SQLAlchemy product model
+├── models.py               # Pydantic request/response schemas
+├── requirements.txt        # Backend dependencies
+└── frontend/
+    ├── public/
+    └── src/
+        ├── App.js          # Dashboard UI and API integration
+        ├── App.css         # Dashboard styling
+        └── index.js
 ```
-FastAPI-Python-Javascript/
-│
-├── main.py                 # Entry point of FastAPI app
-├── database.py             # Database connection setup
-├── database_models.py      # Database schema/models
-├── models.py               # Pydantic models
-│
-├── frontend/               # Frontend application
-│   ├── public/
-│   └── src/
-│
-├── .gitignore
-└── README.md
-```
-
----
 
 ## Getting Started
 
-### Prerequisites
-
-* Python 3.8+
-* Node.js (if frontend requires build tools)
-* pip
-
----
-
-### Backend Setup
+### Backend
 
 ```bash
-# Create virtual environment
-python -m venv myenv
-
-# Activate environment
-source myenv/bin/activate  # Mac/Linux
-myenv\Scripts\activate     # Windows
-
-# Install dependencies
-pip install fastapi uvicorn
-
-# Run server
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-Backend will run on:
+The API runs at `http://127.0.0.1:8000`.
 
-```
-http://127.0.0.1:8000
-```
-
-API docs available at:
-
-```
-http://127.0.0.1:8000/docs
-```
-
----
-
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
@@ -110,36 +56,35 @@ npm install
 npm start
 ```
 
----
+The React app runs at `http://localhost:3000` and connects to the backend at `http://127.0.0.1:8000`.
+
+To use a different API URL:
+
+```bash
+REACT_APP_API_URL=https://your-api.example.com npm start
+```
 
 ## API Endpoints
 
-| Method | Endpoint    | Description  |
-| ------ | ----------- | ------------ |
-| GET    | /           | Health check |
-| GET    | /items      | Fetch items  |
-| POST   | /items      | Create item  |
-| PUT    | /items/{id} | Update item  |
-| DELETE | /items/{id} | Delete item  |
+| Method | Endpoint            | Description |
+| ------ | ------------------- | ----------- |
+| GET    | `/`                 | API metadata |
+| GET    | `/health`           | Health check |
+| GET    | `/products`         | List products with pagination and price filters |
+| GET    | `/products/summary` | Product dashboard summary metrics |
+| GET    | `/products/{id}`    | Fetch one product |
+| POST   | `/products`         | Create a product |
+| PUT    | `/products/{id}`    | Update a product |
+| DELETE | `/products/{id}`    | Delete a product |
 
----
+## GitHub Description
 
-## Future Improvements
+Recommended repository description:
 
-* Add authentication and authorization
-* Deploy backend and frontend
-* Add logging and monitoring
-* Improve UI/UX
-* Integrate advanced analytics
-
----
+```text
+SaaS Product Management Dashboard built with FastAPI, SQLAlchemy, and React for product catalog CRUD, inventory health tracking, and dashboard metrics.
+```
 
 ## Author
 
 Aditya Singh
-
----
-
-## License
-
-This project is open source and available under the MIT License.

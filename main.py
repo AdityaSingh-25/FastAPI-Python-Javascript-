@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy.orm import Session as DBSession
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
@@ -6,9 +6,13 @@ import logging
 
 import database_models
 from database import Session, engine
-from models import ProductCreate, ProductResponse
+from models import ProductCreate, ProductResponse, ProductSummary
 
-app = FastAPI()
+app = FastAPI(
+    title="SaaS Product Management Dashboard API",
+    summary="Inventory and catalog management APIs for a SaaS product operations dashboard.",
+    version="1.0.0",
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,7 +30,16 @@ database_models.Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def greet():
-    return "Welcome to Project X"
+    return {
+        "name": "SaaS Product Management Dashboard",
+        "status": "ready",
+        "docs": "/docs",
+    }
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 
 def get_db():
@@ -37,7 +50,6 @@ def get_db():
         db.close()
 
 
-#  HELPER FUNCTION (NEW)
 def to_product_response(p):
     return ProductResponse(
         id=p.id,
@@ -46,17 +58,14 @@ def to_product_response(p):
         price=p.price,
         quantity=p.quantity
     )
-    #  Converts SQLAlchemy object → Pydantic model
-    # Fixes "value is not a valid dict" error
 
 
-# GET ALL PRODUCTS (FIXED)
 @app.get("/products", response_model=List[ProductResponse])
 def get_all_products(
     skip: int = 0,
-    limit: int = 10,
-    min_price: float = 0,
-    max_price: float = 100000,
+    limit: int = Query(default=100, ge=1, le=500),
+    min_price: float = Query(default=0, ge=0),
+    max_price: float = Query(default=100000, ge=0),
     db: DBSession = Depends(get_db)
 ):
     logger.info(f"Fetching products | skip={skip}, limit={limit}, price={min_price}-{max_price}")
@@ -78,10 +87,23 @@ def get_all_products(
     )
 
     return [to_product_response(p) for p in products]
-    #  FIX: Manual conversion avoids FastAPI serialization issues
 
 
-# GET PRODUCT BY ID (FIXED)
+@app.get("/products/summary", response_model=ProductSummary)
+def get_product_summary(db: DBSession = Depends(get_db)):
+    products = db.query(database_models.Product).all()
+    total_inventory = sum(product.quantity for product in products)
+    total_catalog_value = sum(product.price * product.quantity for product in products)
+    low_stock_count = sum(1 for product in products if product.quantity <= 5)
+
+    return ProductSummary(
+        total_products=len(products),
+        total_inventory=total_inventory,
+        total_catalog_value=round(total_catalog_value, 2),
+        low_stock_count=low_stock_count,
+    )
+
+
 @app.get("/products/{id}", response_model=ProductResponse)
 def get_product_by_id(id: int, db: DBSession = Depends(get_db)):
     product = db.query(database_models.Product)\
@@ -93,15 +115,13 @@ def get_product_by_id(id: int, db: DBSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
 
     return to_product_response(product)
-    #  FIX: Explicit conversion
 
 
-# CREATE PRODUCT (FIXED)
 @app.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 def add_product(product: ProductCreate, db: DBSession = Depends(get_db)):
 
     try:
-        db_product = database_models.Product(**product.dict())
+        db_product = database_models.Product(**product.model_dump())
 
         db.add(db_product)
         db.commit()
@@ -110,7 +130,6 @@ def add_product(product: ProductCreate, db: DBSession = Depends(get_db)):
         logger.info(f"Product created: ID={db_product.id}")
 
         return to_product_response(db_product)
-        #  FIX: return converted object
 
     except Exception as e:
         db.rollback()
@@ -118,7 +137,6 @@ def add_product(product: ProductCreate, db: DBSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to create product")
 
 
-# UPDATE PRODUCT (FIXED)
 @app.put("/products/{id}", response_model=ProductResponse)
 def update_product(id: int, updated_product: ProductCreate, db: DBSession = Depends(get_db)):
 
@@ -130,7 +148,7 @@ def update_product(id: int, updated_product: ProductCreate, db: DBSession = Depe
         raise HTTPException(status_code=404, detail="Product not found")
 
     try:
-        for key, value in updated_product.dict().items():
+        for key, value in updated_product.model_dump().items():
             setattr(db_product, key, value)
 
         db.commit()
@@ -139,7 +157,6 @@ def update_product(id: int, updated_product: ProductCreate, db: DBSession = Depe
         logger.info(f"Product updated: ID={id}")
 
         return to_product_response(db_product)
-        #  FIX: return converted object
 
     except Exception as e:
         db.rollback()
@@ -147,7 +164,6 @@ def update_product(id: int, updated_product: ProductCreate, db: DBSession = Depe
         raise HTTPException(status_code=500, detail="Failed to update product")
 
 
-# DELETE PRODUCT (unchanged)
 @app.delete("/products/{id}", status_code=status.HTTP_200_OK)
 def delete_product(id: int, db: DBSession = Depends(get_db)):
 
