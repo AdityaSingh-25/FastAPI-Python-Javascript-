@@ -15,5 +15,17 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://saas:saas@db:5432/saas_products
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    # Apply migrations, then serve. Postgres schema is owned by Alembic.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
 volumes:
   pgdata:

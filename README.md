@@ -120,12 +120,32 @@ REACT_APP_API_URL=https://your-api.example.com npm start
 pytest
 ```
 
+### Docker
+
+Build and run the full stack (API plus Postgres) with migrations applied on startup:
+
+```bash
+docker compose up --build
+```
+
+The API is served at `http://localhost:8000`. The image is also usable standalone via the `Dockerfile`.
+
+### Observability
+
+- Every response carries an `X-Request-ID` header (echoed if the client supplies one) and request logs include it.
+- `GET /metrics` returns process uptime and in-memory counters (request totals, responses by status code).
+
+### Continuous Integration
+
+`.github/workflows/ci.yml` runs the backend test suite and a production frontend build on every push and pull request.
+
 ## API Endpoints
 
 | Method | Endpoint            | Description |
 | ------ | ------------------- | ----------- |
 | GET    | `/`                 | API metadata |
 | GET    | `/health`           | Health check |
+| GET    | `/metrics`          | Uptime and in-memory request counters |
 | GET    | `/products`              | List products (paginated envelope) with search, filters and sorting |
 | GET    | `/products/summary`      | Product dashboard summary metrics with category breakdown |
 | GET    | `/products/insights`     | Product insights for operations follow-up |

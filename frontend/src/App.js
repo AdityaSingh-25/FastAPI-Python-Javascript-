@@ -90,7 +90,6 @@ function App() {
 
   useEffect(() => {
     fetchDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, stockFilter, categoryFilter, sortBy]);
 
   const showToast = (message) => {

@@ -15,6 +15,7 @@ from app import db_models
 from app.config import get_settings
 from app.dependencies import get_db
 from app.main import app
+from app.observability import counters
 from app.security import rate_limiter
 
 # A single in-memory engine shared by every test, wired into the app via a
@@ -44,6 +45,7 @@ def reset_state():
     db_models.Base.metadata.drop_all(bind=engine)
     db_models.Base.metadata.create_all(bind=engine)
     rate_limiter.reset()
+    counters.reset()
     yield
     # Drop any settings/limiter state a test mutated (e.g. via monkeypatched
     # env vars) so it cannot leak into the next test.
