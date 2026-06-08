@@ -1,13 +1,14 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db_models
 from app.config import get_settings
 from app.database import engine
 from app.routers import meta, products
+from app.security import require_api_key
 
 logging.basicConfig(level=logging.INFO)
 
@@ -41,7 +42,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(meta.router)
-    app.include_router(products.router)
+    app.include_router(products.router, dependencies=[Depends(require_api_key)])
     return app
 
 

@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     low_stock_threshold: int = 5
     cors_origins: List[str] = ["*"]
 
+    # Comma-separated API keys. Empty disables auth (open/anonymous access).
+    api_keys: str = ""
+    # Requests per identity per window. 0 disables rate limiting.
+    rate_limit_per_minute: int = 0
+    rate_limit_window_seconds: int = 60
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 const BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+const API_KEY = process.env.REACT_APP_API_KEY || "";
+
+function authHeaders(extra = {}) {
+  return API_KEY ? { ...extra, "X-API-Key": API_KEY } : extra;
+}
 const EMPTY_FORM = {
   name: "",
   description: "",
@@ -115,10 +120,10 @@ function App() {
     try {
       setLoading(true);
       const [productsRes, summaryRes, insightsRes, categoriesRes] = await Promise.all([
-        fetch(`${BASE_URL}/products?${buildProductQuery()}`),
-        fetch(`${BASE_URL}/products/summary`),
-        fetch(`${BASE_URL}/products/insights`),
-        fetch(`${BASE_URL}/products/categories`)
+        fetch(`${BASE_URL}/products?${buildProductQuery()}`, { headers: authHeaders() }),
+        fetch(`${BASE_URL}/products/summary`, { headers: authHeaders() }),
+        fetch(`${BASE_URL}/products/insights`, { headers: authHeaders() }),
+        fetch(`${BASE_URL}/products/categories`, { headers: authHeaders() })
       ]);
 
       if (!productsRes.ok || !summaryRes.ok || !insightsRes.ok || !categoriesRes.ok) {
@@ -191,7 +196,7 @@ function App() {
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload)
       });
 
@@ -214,7 +219,8 @@ function App() {
   const deleteProduct = async (id) => {
     try {
       const res = await fetch(`${BASE_URL}/products/${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: authHeaders()
       });
 
       if (!res.ok) {
@@ -238,7 +244,7 @@ function App() {
     try {
       const res = await fetch(`${BASE_URL}/products/${product.id}/stock`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ delta })
       });
 
@@ -307,6 +313,7 @@ function App() {
       setImporting(true);
       const res = await fetch(`${BASE_URL}/products/import`, {
         method: "POST",
+        headers: authHeaders(),
         body: data
       });
 

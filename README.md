@@ -87,6 +87,17 @@ alembic upgrade head                                    # apply migrations
 alembic downgrade -1                                    # roll back the last migration
 ```
 
+### Authentication & Rate Limiting
+
+Both are optional and disabled by default, so the demo runs open. Enable them with environment variables:
+
+```bash
+export API_KEYS=local-dev-key,another-key   # clients send one as the X-API-Key header
+export RATE_LIMIT_PER_MINUTE=120            # per-identity; 0 disables
+```
+
+When keys are set, product endpoints return a structured `401` (missing/invalid key) or `429` (rate limited, with a `Retry-After` header); `/` and `/health` stay open. The frontend forwards a key when `REACT_APP_API_KEY` is set.
+
 ### Frontend
 
 ```bash
