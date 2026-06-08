@@ -89,6 +89,13 @@ h2 {
   max-width: 690px;
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .refresh-button,
 .form-actions button:first-child {
   background: var(--primary);
@@ -105,7 +112,7 @@ h2 {
 .metric-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 24px;
 }
 
@@ -139,6 +146,14 @@ h2 {
   color: var(--warning);
 }
 
+.metric-card.danger {
+  border-color: rgba(194, 65, 12, 0.35);
+}
+
+.metric-card.danger strong {
+  color: var(--danger);
+}
+
 .dashboard-grid {
   align-items: start;
   display: grid;
@@ -146,8 +161,14 @@ h2 {
   grid-template-columns: minmax(310px, 380px) minmax(0, 1fr);
 }
 
+.sidebar-stack {
+  display: grid;
+  gap: 16px;
+}
+
 .product-form,
-.product-panel {
+.product-panel,
+.insights-panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -216,6 +237,68 @@ textarea:focus {
   padding: 0 16px;
 }
 
+.insights-panel {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.insight-block {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.insight-block span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.insight-block strong {
+  font-size: 1rem;
+}
+
+.insight-block p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
+.insight-block ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.insight-block li {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.insight-block li strong {
+  font-size: 0.94rem;
+}
+
+.insight-block li span {
+  background: rgba(217, 119, 6, 0.13);
+  border-radius: 999px;
+  color: var(--warning);
+  padding: 5px 9px;
+  text-transform: none;
+}
+
+.insight-block li span.neutral-pill {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--blue);
+}
+
 .product-panel {
   min-width: 0;
   overflow: hidden;
@@ -233,8 +316,8 @@ textarea:focus {
 .toolbar-controls {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr);
-  max-width: 620px;
+  grid-template-columns: minmax(160px, 1.2fr) repeat(3, minmax(120px, 0.8fr));
+  max-width: 760px;
   width: 100%;
 }
 
@@ -244,7 +327,7 @@ textarea:focus {
 
 table {
   border-collapse: collapse;
-  min-width: 820px;
+  min-width: 980px;
   width: 100%;
 }
 
@@ -301,6 +384,49 @@ td span {
   color: var(--danger);
 }
 
+.category-tag {
+  background: rgba(45, 106, 79, 0.1);
+  border-radius: 999px;
+  color: var(--primary-strong);
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+}
+
+.muted-cell {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.stock-stepper {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.stock-stepper span {
+  display: inline-block;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: center;
+}
+
+.stock-stepper button {
+  background: #edf1ee;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 1.1rem;
+  height: 30px;
+  line-height: 1;
+  width: 30px;
+}
+
+.stock-stepper button:hover:not(:disabled) {
+  background: #e0e7e2;
+}
+
 .row-actions {
   display: flex;
   gap: 8px;
@@ -339,7 +465,7 @@ td span {
 
 @media (max-width: 1100px) {
   .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dashboard-grid {
@@ -356,6 +482,14 @@ td span {
   .table-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: stretch;
+  }
+
+  .header-actions button {
+    width: 100%;
   }
 
   .metric-grid,
