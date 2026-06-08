@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Put the project root on sys.path so `import app` works regardless of how
+# pytest is invoked (plain `pytest` in CI does not add the cwd the way
+# `python -m pytest` does).
+pythonpath = ["."]
+testpaths = ["tests"]
