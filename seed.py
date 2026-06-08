@@ -8,30 +8,35 @@ SAMPLE_PRODUCTS = [
         "description": "Self-serve subscription plan for early-stage teams",
         "price": 49,
         "quantity": 42,
+        "category": "Subscription",
     },
     {
         "name": "Growth Plan",
         "description": "Collaboration plan for scaling SaaS product teams",
         "price": 149,
         "quantity": 18,
+        "category": "Subscription",
     },
     {
         "name": "Enterprise Plan",
         "description": "Advanced governance and support for large accounts",
         "price": 499,
         "quantity": 6,
+        "category": "Subscription",
     },
     {
         "name": "Analytics Add-on",
         "description": "Product analytics module for funnel and feature reporting",
         "price": 89,
         "quantity": 5,
+        "category": "Add-on",
     },
     {
         "name": "Priority Support",
         "description": "Premium support package with faster response times",
         "price": 199,
         "quantity": 0,
+        "category": "Support",
     },
 ]
 

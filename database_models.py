@@ -1,7 +1,13 @@
-from sqlalchemy import Column, Integer, String, Float
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 
 class Product(Base):
@@ -12,3 +18,6 @@ class Product(Base):
     description = Column(String)
     price = Column(Float)
     quantity = Column(Integer)
+    category = Column(String, default="Uncategorized", index=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

@@ -73,6 +73,14 @@ def test_product_crud_flow():
         "low_stock_count": 1,
         "out_of_stock_count": 0,
         "average_price": 199.0,
+        "category_breakdown": [
+            {
+                "category": "Uncategorized",
+                "product_count": 1,
+                "total_inventory": 4,
+                "total_catalog_value": 796.0,
+            }
+        ],
     }
 
     delete_response = client.delete(f"/products/{product['id']}")
@@ -147,7 +155,7 @@ def test_rejects_invalid_product_filters():
     assert stock_response.status_code == 400
     assert stock_response.json()["detail"] == "stock_status must be one of: all, healthy, low, out"
     assert sort_response.status_code == 400
-    assert sort_response.json()["detail"] == "sort_by must be one of: name, stock, value"
+    assert sort_response.json()["detail"] == "sort_by must be one of: name, stock, value, price"
 
 
 def test_returns_404_for_missing_product():
@@ -155,3 +163,151 @@ def test_returns_404_for_missing_product():
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Product not found"
+
+
+def _seed(products):
+    for product in products:
+        assert client.post("/products", json=product).status_code == 201
+
+
+def test_category_filter_and_listing():
+    _seed(
+        [
+            {
+                "name": "Starter Plan",
+                "description": "Self-serve plan",
+                "price": 49,
+                "quantity": 30,
+                "category": "Subscription",
+            },
+            {
+                "name": "Analytics Add-on",
+                "description": "Reporting module",
+                "price": 89,
+                "quantity": 8,
+                "category": "Add-on",
+            },
+            {
+                "name": "Growth Plan",
+                "description": "Plan for scaling teams",
+                "price": 149,
+                "quantity": 12,
+                "category": "Subscription",
+            },
+        ]
+    )
+
+    categories_response = client.get("/products/categories")
+    assert categories_response.status_code == 200
+    assert categories_response.json() == ["Add-on", "Subscription"]
+
+    filtered = client.get("/products?category=Subscription")
+    assert filtered.status_code == 200
+    assert sorted(product["name"] for product in filtered.json()) == ["Growth Plan", "Starter Plan"]
+
+
+def test_category_defaults_to_uncategorized():
+    response = client.post(
+        "/products",
+        json={
+            "name": "Mystery Box",
+            "description": "No category provided",
+            "price": 25,
+            "quantity": 4,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["category"] == "Uncategorized"
+
+
+def test_sort_by_price():
+    _seed(
+        [
+            {"name": "Cheap", "description": "Low cost item", "price": 10, "quantity": 5},
+            {"name": "Pricey", "description": "High cost item", "price": 500, "quantity": 5},
+            {"name": "Mid", "description": "Mid cost item", "price": 100, "quantity": 5},
+        ]
+    )
+
+    response = client.get("/products?sort_by=price")
+    assert response.status_code == 200
+    assert [product["name"] for product in response.json()] == ["Pricey", "Mid", "Cheap"]
+
+
+def test_stock_adjustment():
+    created = client.post(
+        "/products",
+        json={
+            "name": "Restock Me",
+            "description": "Needs more stock",
+            "price": 30,
+            "quantity": 2,
+        },
+    )
+    product_id = created.json()["id"]
+
+    increase = client.patch(f"/products/{product_id}/stock", json={"delta": 10})
+    assert increase.status_code == 200
+    assert increase.json()["quantity"] == 12
+
+    decrease = client.patch(f"/products/{product_id}/stock", json={"delta": -4})
+    assert decrease.status_code == 200
+    assert decrease.json()["quantity"] == 8
+
+    below_zero = client.patch(f"/products/{product_id}/stock", json={"delta": -100})
+    assert below_zero.status_code == 400
+    assert below_zero.json()["detail"] == "Stock cannot be reduced below zero"
+
+    missing = client.patch("/products/999/stock", json={"delta": 1})
+    assert missing.status_code == 404
+
+
+def test_csv_import_creates_and_reports_errors():
+    csv_content = (
+        "name,description,price,quantity,category\n"
+        "Imported Plan,Imported via CSV,120,15,Subscription\n"
+        "Add-on Pack,Bundle of add-ons,40,7,Add-on\n"
+        "B,Too short name,10,1,Misc\n"
+        "Bad Price,Invalid price value,-5,3,Misc\n"
+    )
+
+    response = client.post(
+        "/products/import",
+        files={"file": ("products.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["created"] == 2
+    assert result["failed"] == 2
+    assert {error["row"] for error in result["errors"]} == {4, 5}
+
+    listed = client.get("/products")
+    assert sorted(product["name"] for product in listed.json()) == ["Add-on Pack", "Imported Plan"]
+
+
+def test_csv_import_rejects_missing_columns():
+    response = client.post(
+        "/products/import",
+        files={"file": ("bad.csv", "name,price\nWidget,10\n", "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "must include columns" in response.json()["detail"]
+
+
+def test_product_response_includes_timestamps():
+    created = client.post(
+        "/products",
+        json={
+            "name": "Timestamped",
+            "description": "Has audit fields",
+            "price": 60,
+            "quantity": 9,
+        },
+    )
+
+    body = created.json()
+    assert body["created_at"] is not None
+    assert body["updated_at"] is not None

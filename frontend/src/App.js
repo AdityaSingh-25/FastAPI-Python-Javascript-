@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 const BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
@@ -6,7 +6,8 @@ const EMPTY_FORM = {
   name: "",
   description: "",
   price: "",
-  quantity: ""
+  quantity: "",
+  category: ""
 };
 
 function formatCurrency(value) {
@@ -15,6 +16,13 @@ function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(value || 0);
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function getStockStatus(quantity) {
@@ -30,6 +38,7 @@ function escapeCsv(value) {
 function App() {
   const [products, setProducts] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [insights, setInsights] = useState({
     highest_value_product: null,
     reorder_recommendations: [],
@@ -39,10 +48,13 @@ function App() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
+  const fileInputRef = useRef(null);
 
   const localMetrics = useMemo(() => {
     const totalProducts = products.length;
@@ -69,9 +81,12 @@ function App() {
     averagePrice: summary?.average_price ?? localMetrics.averagePrice
   };
 
+  const categoryBreakdown = summary?.category_breakdown ?? [];
+
   useEffect(() => {
     fetchDashboardData();
-  }, [search, stockFilter, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, stockFilter, categoryFilter, sortBy]);
 
   const showToast = (message) => {
     setToast(message);
@@ -89,31 +104,38 @@ function App() {
       params.set("search", search.trim());
     }
 
+    if (categoryFilter !== "all") {
+      params.set("category", categoryFilter);
+    }
+
     return params.toString();
   };
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [productsRes, summaryRes, insightsRes] = await Promise.all([
+      const [productsRes, summaryRes, insightsRes, categoriesRes] = await Promise.all([
         fetch(`${BASE_URL}/products?${buildProductQuery()}`),
         fetch(`${BASE_URL}/products/summary`),
-        fetch(`${BASE_URL}/products/insights`)
+        fetch(`${BASE_URL}/products/insights`),
+        fetch(`${BASE_URL}/products/categories`)
       ]);
 
-      if (!productsRes.ok || !summaryRes.ok || !insightsRes.ok) {
+      if (!productsRes.ok || !summaryRes.ok || !insightsRes.ok || !categoriesRes.ok) {
         throw new Error("Failed to fetch dashboard data");
       }
 
-      const [productsData, summaryData, insightsData] = await Promise.all([
+      const [productsData, summaryData, insightsData, categoriesData] = await Promise.all([
         productsRes.json(),
         summaryRes.json(),
-        insightsRes.json()
+        insightsRes.json(),
+        categoriesRes.json()
       ]);
 
       setProducts(productsData);
       setSummary(summaryData);
       setInsights(insightsData);
+      setCategories(categoriesData);
     } catch (err) {
       console.error(err);
       showToast("Unable to load dashboard data");
@@ -156,7 +178,8 @@ function App() {
       name: form.name.trim(),
       description: form.description.trim(),
       price: Number(form.price),
-      quantity: Number(form.quantity)
+      quantity: Number(form.quantity),
+      category: form.category.trim() || "Uncategorized"
     };
 
     try {
@@ -206,13 +229,39 @@ function App() {
     }
   };
 
+  const adjustStock = async (product, delta) => {
+    if (product.quantity + delta < 0) {
+      showToast("Stock cannot go below zero");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/products/${product.id}/stock`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delta })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Failed to adjust stock");
+      }
+
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Unable to adjust stock");
+    }
+  };
+
   const startEditing = (product) => {
     setEditingProduct(product);
     setForm({
       name: product.name,
       description: product.description,
       price: product.price,
-      quantity: product.quantity
+      quantity: product.quantity,
+      category: product.category || ""
     });
   };
 
@@ -222,11 +271,12 @@ function App() {
       return;
     }
 
-    const header = ["ID", "Name", "Description", "Price", "Quantity", "Status", "Catalog Value"];
+    const header = ["ID", "Name", "Description", "Category", "Price", "Quantity", "Status", "Catalog Value"];
     const rows = products.map((product) => [
       product.id,
       product.name,
       product.description,
+      product.category || "Uncategorized",
       product.price,
       product.quantity,
       getStockStatus(product.quantity),
@@ -246,6 +296,39 @@ function App() {
     showToast("CSV exported");
   };
 
+  const importCsv = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const data = new FormData();
+    data.append("file", file);
+
+    try {
+      setImporting(true);
+      const res = await fetch(`${BASE_URL}/products/import`, {
+        method: "POST",
+        body: data
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.detail || "Failed to import products");
+      }
+
+      const failedNote = result.failed ? `, ${result.failed} skipped` : "";
+      showToast(`Imported ${result.created} product${result.created === 1 ? "" : "s"}${failedNote}`);
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Unable to import products");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   return (
     <main className="app-shell">
       {toast && <div className="toast">{toast}</div>}
@@ -255,10 +338,24 @@ function App() {
           <p className="eyebrow">SaaS operations</p>
           <h1>Product Management Dashboard</h1>
           <p className="header-copy">
-            Track catalog health, inventory exposure, and product updates from one focused workspace.
+            Track catalog health, inventory exposure and product updates from one focused workspace.
           </p>
         </div>
         <div className="header-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={importCsv}
+            style={{ display: "none" }}
+          />
+          <button
+            className="secondary-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            {importing ? "Importing" : "Import CSV"}
+          </button>
           <button className="secondary-button" onClick={exportCsv} disabled={loading}>
             Export CSV
           </button>
@@ -320,6 +417,21 @@ function App() {
                 placeholder="Self-serve subscription plan for small teams"
                 rows="4"
               />
+            </label>
+
+            <label>
+              Category
+              <input
+                list="category-options"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                placeholder="Subscription"
+              />
+              <datalist id="category-options">
+                {categories.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
             </label>
 
             <div className="field-row">
@@ -387,6 +499,22 @@ function App() {
                 </ul>
               )}
             </div>
+
+            <div className="insight-block">
+              <span>By category</span>
+              {categoryBreakdown.length === 0 ? (
+                <p>No categories yet</p>
+              ) : (
+                <ul>
+                  {categoryBreakdown.map((stat) => (
+                    <li key={stat.category}>
+                      <strong>{stat.category}</strong>
+                      <span className="neutral-pill">{stat.product_count}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </section>
         </aside>
 
@@ -403,6 +531,14 @@ function App() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search products"
               />
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                <option value="all">All categories</option>
+                {categories.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
               <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
                 <option value="all">All stock</option>
                 <option value="healthy">Healthy</option>
@@ -413,6 +549,7 @@ function App() {
                 <option value="name">Name</option>
                 <option value="stock">Lowest stock</option>
                 <option value="value">Highest value</option>
+                <option value="price">Highest price</option>
               </select>
             </div>
           </div>
@@ -422,23 +559,25 @@ function App() {
               <thead>
                 <tr>
                   <th>Product</th>
+                  <th>Category</th>
                   <th>Price</th>
                   <th>Stock</th>
                   <th>Status</th>
                   <th>Value</th>
+                  <th>Updated</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="empty-state">
+                    <td colSpan="8" className="empty-state">
                       Loading product data
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="empty-state">
+                    <td colSpan="8" className="empty-state">
                       No products match this view
                     </td>
                   </tr>
@@ -452,14 +591,37 @@ function App() {
                           <strong>{product.name}</strong>
                           <span>{product.description}</span>
                         </td>
+                        <td>
+                          <span className="category-tag">{product.category || "Uncategorized"}</span>
+                        </td>
                         <td>{formatCurrency(product.price)}</td>
-                        <td>{product.quantity}</td>
+                        <td>
+                          <div className="stock-stepper">
+                            <button
+                              type="button"
+                              aria-label="Decrease stock"
+                              onClick={() => adjustStock(product, -1)}
+                              disabled={product.quantity === 0}
+                            >
+                              −
+                            </button>
+                            <span>{product.quantity}</span>
+                            <button
+                              type="button"
+                              aria-label="Increase stock"
+                              onClick={() => adjustStock(product, 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
                         <td>
                           <span className={`status-pill ${status.toLowerCase().replaceAll(" ", "-")}`}>
                             {status}
                           </span>
                         </td>
                         <td>{formatCurrency(product.price * product.quantity)}</td>
+                        <td className="muted-cell">{formatDate(product.updated_at)}</td>
                         <td>
                           <div className="row-actions">
                             <button type="button" onClick={() => startEditing(product)}>

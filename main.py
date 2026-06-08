@@ -1,14 +1,26 @@
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session as DBSession
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import List
+from pydantic import ValidationError
+import csv
+import io
 import logging
 
 import database_models
 from database import Session, engine
-from models import ProductCreate, ProductInsights, ProductResponse, ProductSummary
+from models import (
+    CategoryStat,
+    ImportResult,
+    ImportRowError,
+    ProductCreate,
+    ProductInsights,
+    ProductResponse,
+    ProductSummary,
+    StockAdjustment,
+)
 
 LOW_STOCK_THRESHOLD = 5
 
@@ -61,13 +73,7 @@ def get_db():
 
 
 def to_product_response(p):
-    return ProductResponse(
-        id=p.id,
-        name=p.name,
-        description=p.description,
-        price=p.price,
-        quantity=p.quantity
-    )
+    return ProductResponse.model_validate(p)
 
 
 def get_stock_status(quantity: int):
@@ -86,17 +92,19 @@ def get_all_products(
     max_price: float = Query(default=100000, ge=0),
     search: str = "",
     stock_status: str = "all",
+    category: str = "",
     sort_by: str = "name",
     db: DBSession = Depends(get_db)
 ):
     logger.info(
-        "Fetching products | skip=%s, limit=%s, price=%s-%s, search=%s, stock=%s, sort=%s",
+        "Fetching products | skip=%s, limit=%s, price=%s-%s, search=%s, stock=%s, category=%s, sort=%s",
         skip,
         limit,
         min_price,
         max_price,
         search,
         stock_status,
+        category,
         sort_by,
     )
 
@@ -112,10 +120,10 @@ def get_all_products(
             detail="stock_status must be one of: all, healthy, low, out",
         )
 
-    if sort_by not in {"name", "stock", "value"}:
+    if sort_by not in {"name", "stock", "value", "price"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="sort_by must be one of: name, stock, value",
+            detail="sort_by must be one of: name, stock, value, price",
         )
 
     query = (
@@ -123,6 +131,9 @@ def get_all_products(
         .filter(database_models.Product.price >= min_price)
         .filter(database_models.Product.price <= max_price)
     )
+
+    if category.strip():
+        query = query.filter(database_models.Product.category == category.strip())
 
     if search.strip():
         search_term = f"%{search.strip()}%"
@@ -149,6 +160,8 @@ def get_all_products(
         products.sort(key=lambda product: product.price * product.quantity, reverse=True)
     elif sort_by == "stock":
         products.sort(key=lambda product: product.quantity)
+    elif sort_by == "price":
+        products.sort(key=lambda product: product.price, reverse=True)
     else:
         products.sort(key=lambda product: product.name.lower())
 
@@ -166,6 +179,27 @@ def get_product_summary(db: DBSession = Depends(get_db)):
     out_of_stock_count = sum(1 for product in products if get_stock_status(product.quantity) == "out")
     average_price = sum(product.price for product in products) / len(products) if products else 0
 
+    breakdown = {}
+    for product in products:
+        name = product.category or "Uncategorized"
+        stat = breakdown.setdefault(
+            name,
+            {"product_count": 0, "total_inventory": 0, "total_catalog_value": 0.0},
+        )
+        stat["product_count"] += 1
+        stat["total_inventory"] += product.quantity
+        stat["total_catalog_value"] += product.price * product.quantity
+
+    category_breakdown = [
+        CategoryStat(
+            category=name,
+            product_count=stat["product_count"],
+            total_inventory=stat["total_inventory"],
+            total_catalog_value=round(stat["total_catalog_value"], 2),
+        )
+        for name, stat in sorted(breakdown.items(), key=lambda item: item[0].lower())
+    ]
+
     return ProductSummary(
         total_products=len(products),
         total_inventory=total_inventory,
@@ -173,7 +207,21 @@ def get_product_summary(db: DBSession = Depends(get_db)):
         low_stock_count=low_stock_count,
         out_of_stock_count=out_of_stock_count,
         average_price=round(average_price, 2),
+        category_breakdown=category_breakdown,
     )
+
+
+@app.get("/products/categories", response_model=List[str])
+def get_categories(db: DBSession = Depends(get_db)):
+    rows = (
+        db.query(database_models.Product.category)
+        .distinct()
+        .all()
+    )
+    categories = sorted(
+        {(row[0] or "Uncategorized") for row in rows}, key=lambda name: name.lower()
+    )
+    return categories
 
 
 @app.get("/products/insights", response_model=ProductInsights)
@@ -288,3 +336,101 @@ def delete_product(id: int, db: DBSession = Depends(get_db)):
         db.rollback()
         logger.error(f"Error deleting product {id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete product")
+
+
+@app.patch("/products/{id}/stock", response_model=ProductResponse)
+def adjust_stock(id: int, adjustment: StockAdjustment, db: DBSession = Depends(get_db)):
+    db_product = db.query(database_models.Product)\
+        .filter(database_models.Product.id == id)\
+        .first()
+
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    new_quantity = db_product.quantity + adjustment.delta
+    if new_quantity < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stock cannot be reduced below zero",
+        )
+
+    try:
+        db_product.quantity = new_quantity
+        db.commit()
+        db.refresh(db_product)
+
+        logger.info(f"Stock adjusted: ID={id}, delta={adjustment.delta}, quantity={new_quantity}")
+
+        return to_product_response(db_product)
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error adjusting stock for product {id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to adjust stock")
+
+
+@app.post("/products/import", response_model=ImportResult, status_code=status.HTTP_201_CREATED)
+async def import_products(file: UploadFile = File(...), db: DBSession = Depends(get_db)):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a .csv",
+        )
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be UTF-8 encoded",
+        )
+
+    reader = csv.DictReader(io.StringIO(text))
+    required = {"name", "description", "price", "quantity"}
+    if not reader.fieldnames or not required.issubset({h.strip() for h in reader.fieldnames}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must include columns: name, description, price, quantity",
+        )
+
+    created = 0
+    errors: List[ImportRowError] = []
+    pending = []
+
+    # Row 1 is the header, so data rows start at line 2.
+    for offset, row in enumerate(reader, start=2):
+        raw_row = {key.strip(): (value or "").strip() for key, value in row.items() if key}
+        payload = {
+            "name": raw_row.get("name", ""),
+            "description": raw_row.get("description", ""),
+            "price": raw_row.get("price", ""),
+            "quantity": raw_row.get("quantity", ""),
+        }
+        category = raw_row.get("category", "")
+        if category:
+            payload["category"] = category
+
+        try:
+            product = ProductCreate(**payload)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            field = first["loc"][0] if first.get("loc") else "row"
+            errors.append(ImportRowError(row=offset, error=f"{field}: {first['msg']}"))
+            continue
+
+        pending.append(database_models.Product(**product.model_dump()))
+
+    if pending:
+        try:
+            db.add_all(pending)
+            db.commit()
+            created = len(pending)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error importing products: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to import products")
+
+    logger.info(f"Imported {created} products with {len(errors)} errors")
+
+    return ImportResult(created=created, failed=len(errors), errors=errors)
