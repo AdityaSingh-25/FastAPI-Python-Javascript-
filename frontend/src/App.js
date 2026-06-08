@@ -132,7 +132,7 @@ function App() {
         categoriesRes.json()
       ]);
 
-      setProducts(productsData);
+      setProducts(productsData.items);
       setSummary(summaryData);
       setInsights(insightsData);
       setCategories(categoriesData);

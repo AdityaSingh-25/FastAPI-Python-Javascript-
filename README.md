@@ -28,10 +28,15 @@ A full-stack SaaS product operations dashboard built with FastAPI, SQLAlchemy an
 
 ```text
 FastAPI_demo/
-├── main.py                 # FastAPI application and product routes
-├── database.py             # Database engine/session setup
-├── database_models.py      # SQLAlchemy product model
-├── models.py               # Pydantic request/response schemas
+├── app/
+│   ├── main.py             # App factory and router wiring
+│   ├── config.py           # Pydantic-settings configuration
+│   ├── database.py         # Engine/session setup
+│   ├── db_models.py        # SQLAlchemy product model
+│   ├── schemas.py          # Pydantic request/response schemas
+│   ├── dependencies.py     # Shared FastAPI dependencies (DB session)
+│   ├── routers/            # HTTP routes (products, meta)
+│   └── services/           # Framework-agnostic domain logic
 ├── seed.py                 # Demo SaaS product data
 ├── requirements.txt        # Backend dependencies
 ├── tests/                  # Backend API tests
@@ -51,7 +56,7 @@ FastAPI_demo/
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 The API runs at `http://127.0.0.1:8000`.
@@ -90,7 +95,7 @@ pytest
 | ------ | ------------------- | ----------- |
 | GET    | `/`                 | API metadata |
 | GET    | `/health`           | Health check |
-| GET    | `/products`              | List products with pagination, search, filters and sorting |
+| GET    | `/products`              | List products (paginated envelope) with search, filters and sorting |
 | GET    | `/products/summary`      | Product dashboard summary metrics with category breakdown |
 | GET    | `/products/insights`     | Product insights for operations follow-up |
 | GET    | `/products/categories`   | Distinct product categories |
@@ -115,6 +120,8 @@ pytest
 | `limit`        | Number of records to return |
 | `min_price`    | Minimum product price |
 | `max_price`    | Maximum product price |
+
+The response is a paginated envelope: `{ "items": [...], "total": <int>, "skip": <int>, "limit": <int> }`.
 
 ### CSV Import Format
 

@@ -3,8 +3,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import database_models
-from main import app, get_db
+from app import db_models
+from app.dependencies import get_db
+from app.main import app
 
 
 engine = create_engine(
@@ -28,8 +29,12 @@ client = TestClient(app)
 
 
 def setup_function():
-    database_models.Base.metadata.drop_all(bind=engine)
-    database_models.Base.metadata.create_all(bind=engine)
+    db_models.Base.metadata.drop_all(bind=engine)
+    db_models.Base.metadata.create_all(bind=engine)
+
+
+def items(response):
+    return response.json()["items"]
 
 
 def test_product_crud_flow():
@@ -50,7 +55,8 @@ def test_product_crud_flow():
 
     list_response = client.get("/products")
     assert list_response.status_code == 200
-    assert len(list_response.json()) == 1
+    assert list_response.json()["total"] == 1
+    assert len(items(list_response)) == 1
 
     update_response = client.put(
         f"/products/{product['id']}",
@@ -85,7 +91,7 @@ def test_product_crud_flow():
 
     delete_response = client.delete(f"/products/{product['id']}")
     assert delete_response.status_code == 200
-    assert client.get("/products").json() == []
+    assert items(client.get("/products")) == []
 
 
 def test_rejects_invalid_price_filter():
@@ -93,6 +99,23 @@ def test_rejects_invalid_price_filter():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "min_price cannot be greater than max_price"
+
+
+def test_pagination_metadata():
+    _seed(
+        [
+            {"name": f"Item {i}", "description": "Paginated product", "price": 10 + i, "quantity": 5}
+            for i in range(5)
+        ]
+    )
+
+    response = client.get("/products?skip=2&limit=2")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 5
+    assert body["skip"] == 2
+    assert body["limit"] == 2
+    assert len(body["items"]) == 2
 
 
 def test_filters_sorts_and_returns_insights():
@@ -122,15 +145,15 @@ def test_filters_sorts_and_returns_insights():
 
     search_response = client.get("/products?search=analytics")
     assert search_response.status_code == 200
-    assert [product["name"] for product in search_response.json()] == ["Analytics Add-on"]
+    assert [product["name"] for product in items(search_response)] == ["Analytics Add-on"]
 
     low_stock_response = client.get("/products?stock_status=low")
     assert low_stock_response.status_code == 200
-    assert [product["name"] for product in low_stock_response.json()] == ["Analytics Add-on"]
+    assert [product["name"] for product in items(low_stock_response)] == ["Analytics Add-on"]
 
     sorted_response = client.get("/products?sort_by=value")
     assert sorted_response.status_code == 200
-    assert [product["name"] for product in sorted_response.json()] == [
+    assert [product["name"] for product in items(sorted_response)] == [
         "Starter Plan",
         "Analytics Add-on",
         "Priority Support",
@@ -203,7 +226,7 @@ def test_category_filter_and_listing():
 
     filtered = client.get("/products?category=Subscription")
     assert filtered.status_code == 200
-    assert sorted(product["name"] for product in filtered.json()) == ["Growth Plan", "Starter Plan"]
+    assert sorted(product["name"] for product in items(filtered)) == ["Growth Plan", "Starter Plan"]
 
 
 def test_category_defaults_to_uncategorized():
@@ -232,7 +255,7 @@ def test_sort_by_price():
 
     response = client.get("/products?sort_by=price")
     assert response.status_code == 200
-    assert [product["name"] for product in response.json()] == ["Pricey", "Mid", "Cheap"]
+    assert [product["name"] for product in items(response)] == ["Pricey", "Mid", "Cheap"]
 
 
 def test_stock_adjustment():
@@ -284,7 +307,7 @@ def test_csv_import_creates_and_reports_errors():
     assert {error["row"] for error in result["errors"]} == {4, 5}
 
     listed = client.get("/products")
-    assert sorted(product["name"] for product in listed.json()) == ["Add-on Pack", "Imported Plan"]
+    assert sorted(product["name"] for product in items(listed)) == ["Add-on Pack", "Imported Plan"]
 
 
 def test_csv_import_rejects_missing_columns():

@@ -1,5 +1,5 @@
-from database import Session, engine
-from database_models import Base, Product
+from app.database import SessionLocal, engine
+from app.db_models import Base, Product
 
 
 SAMPLE_PRODUCTS = [
@@ -43,7 +43,7 @@ SAMPLE_PRODUCTS = [
 
 def seed_products():
     Base.metadata.create_all(bind=engine)
-    db = Session()
+    db = SessionLocal()
 
     try:
         for item in SAMPLE_PRODUCTS:

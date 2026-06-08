@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductBase(BaseModel):
@@ -26,6 +26,13 @@ class ProductResponse(ProductBase):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProductPage(BaseModel):
+    items: List[ProductResponse]
+    total: int
+    skip: int
+    limit: int
 
 
 class StockAdjustment(BaseModel):
