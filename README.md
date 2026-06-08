@@ -67,6 +67,26 @@ Load sample SaaS products for a richer dashboard:
 python seed.py
 ```
 
+### Database & Migrations
+
+SQLite is the zero-config default — tables are created automatically on startup and the demo needs no extra setup. For Postgres (or any non-SQLite backend), schema is managed by Alembic instead.
+
+Start a local Postgres and point the app at it:
+
+```bash
+docker compose up -d db
+export DATABASE_URL=postgresql://saas:saas@localhost:5432/saas_products
+alembic upgrade head
+```
+
+Common Alembic commands:
+
+```bash
+alembic revision --autogenerate -m "describe change"   # create a migration from model changes
+alembic upgrade head                                    # apply migrations
+alembic downgrade -1                                    # roll back the last migration
+```
+
 ### Frontend
 
 ```bash

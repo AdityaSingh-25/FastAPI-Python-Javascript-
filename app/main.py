@@ -16,7 +16,11 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db_models.Base.metadata.create_all(bind=engine)
+    # SQLite is the zero-config local/dev/test backend, so create tables on the
+    # fly. Other backends (e.g. Postgres) are managed by Alembic migrations
+    # (`alembic upgrade head`) and are intentionally left untouched here.
+    if engine.url.get_backend_name() == "sqlite":
+        db_models.Base.metadata.create_all(bind=engine)
     yield
 
 
